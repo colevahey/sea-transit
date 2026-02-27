@@ -9,5 +9,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Netlify build hook
-        run: curl -s -X POST "https://api.netlify.com/build_hooks/69a1469ad32f73b721acaf71"
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy to Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: npx netlify-cli deploy --dir . --prod --site 208f96f1-9f9b-4fb5-977a-ca7809ea0c9e
