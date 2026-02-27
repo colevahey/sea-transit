@@ -69,6 +69,7 @@
             Nearby
           </button>
           <span id="detail-stop-name" class="detail-stop-name"></span>
+          <button class="icon-btn fav-btn" id="btn-favorite" aria-label="Save stop"></button>
         </div>
         <p class="section-label">Arrivals</p>
         <div class="card-list">
@@ -83,7 +84,12 @@
 
       <!-- Settings view -->
       <div id="view-settings" class="view">
-        <p class="section-label" style="padding-top:4px">Settings</p>
+        <p class="section-label" style="padding-top:4px">Saved Stops</p>
+        <div class="settings-group" id="favorites-section">
+          <!-- rendered by JS -->
+        </div>
+
+        <p class="section-label">Settings</p>
         <div class="settings-group">
           <div class="glass-card">
             <div class="settings-row">

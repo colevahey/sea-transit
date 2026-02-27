@@ -4,11 +4,19 @@ const PROXY_URL = '/api/transit';
 
 // ─── SVG icon library ─────────────────────────────────────────────────────────
 const ICONS = {
-  bus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3" y="3" width="18" height="13" rx="2"/>
-    <path d="M3 11h18M8 3v8M16 3v8"/>
-    <circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>
-    <path d="M7.5 17.5V16h9v1.5"/>
+  bus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="1.5" y="4" width="21" height="12" rx="2"/>
+    <rect x="2.5" y="7.5" width="3" height="6" rx="0.75"/>
+    <rect x="7" y="7.5" width="3.5" height="6" rx="0.75"/>
+    <rect x="12" y="7.5" width="3.5" height="6" rx="0.75"/>
+    <rect x="17" y="7.5" width="4" height="6" rx="0.75"/>
+    <rect x="4" y="4" width="11" height="2" rx="0.5" fill="currentColor" stroke="none" opacity="0.3"/>
+    <circle cx="22" cy="10.5" r="0.8" fill="currentColor" stroke="none"/>
+    <line x1="1.5" y1="16" x2="22.5" y2="16" opacity="0.35"/>
+    <circle cx="6" cy="20.5" r="1.75"/>
+    <circle cx="6" cy="20.5" r="0.65" fill="currentColor" stroke="none"/>
+    <circle cx="17.5" cy="20.5" r="1.75"/>
+    <circle cx="17.5" cy="20.5" r="0.65" fill="currentColor" stroke="none"/>
   </svg>`,
 
   rail: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -56,6 +64,14 @@ const ICONS = {
   moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
   </svg>`,
+
+  star: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+  </svg>`,
+
+  starFilled: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+  </svg>`,
 };
 
 function icon(name) {
@@ -89,9 +105,11 @@ const state = {
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
 function applyTheme(light) {
+  document.documentElement.classList.add('theme-transitioning');
   document.body.classList.toggle('light-mode', light);
   const btn = document.getElementById('btn-theme');
   if (btn) btn.innerHTML = light ? icon('moon') : icon('sun');
+  setTimeout(() => document.documentElement.classList.remove('theme-transitioning'), 400);
 }
 
 function toggleTheme() {
@@ -99,6 +117,50 @@ function toggleTheme() {
   const next = !isLight;
   localStorage.setItem('theme', next ? 'light' : 'dark');
   applyTheme(next);
+}
+
+// ─── Favorites ───────────────────────────────────────────────────────────────
+function getFavorites() { return JSON.parse(localStorage.getItem('favorites') || '[]'); }
+function saveFavorites(favs) { localStorage.setItem('favorites', JSON.stringify(favs)); }
+function isFavorite(stopId) { return getFavorites().some(f => f.id === stopId); }
+
+function toggleFavorite(stop) {
+  let favs = getFavorites();
+  if (isFavorite(stop.id)) favs = favs.filter(f => f.id !== stop.id);
+  else favs.push({ id: stop.id, name: stop.name, code: stop.code });
+  saveFavorites(favs);
+}
+
+function updateFavBtn() {
+  const btn = document.getElementById('btn-favorite');
+  if (!btn || !state.selectedStop) return;
+  const fav = isFavorite(state.selectedStop.id);
+  btn.innerHTML = fav ? icon('starFilled') : icon('star');
+  btn.classList.toggle('is-favorite', fav);
+}
+
+function renderFavoritesSettings() {
+  const section = document.getElementById('favorites-section');
+  if (!section) return;
+  const favs = getFavorites();
+  if (favs.length === 0) {
+    section.innerHTML = '<div class="glass-card"><div class="settings-row"><span class="settings-row-label" style="color:var(--text-tertiary)">No saved stops yet</span></div></div>';
+    return;
+  }
+  section.innerHTML = `<div class="glass-card">${favs.map((f) => `
+    <div class="fav-item">
+      <div>
+        <div class="fav-item-name">${f.name}</div>
+        <div class="fav-item-meta">Stop #${f.code || f.id}</div>
+      </div>
+      <button class="fav-remove" data-fav-id="${f.id}" aria-label="Remove">×</button>
+    </div>`).join('')}</div>`;
+  section.querySelectorAll('.fav-remove').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      saveFavorites(getFavorites().filter(f => f.id !== btn.dataset.favId));
+      renderFavoritesSettings();
+    });
+  });
 }
 
 // ─── Routing helpers ──────────────────────────────────────────────────────────
@@ -115,6 +177,7 @@ function showView(name) {
   state.currentView = name;
 
   if (name === 'nearby') loadNearbyStops();
+  if (name === 'settings') renderFavoritesSettings();
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -178,12 +241,13 @@ async function loadNearbyStops() {
 function renderStopCard(stop, userLat, userLon) {
   const dist = userLat ? haversineM(userLat, userLon, stop.lat, stop.lon) : null;
   const distStr = dist !== null ? formatDist(dist) : '';
+  const favMark = isFavorite(stop.id) ? '<span class="stop-fav-mark">★</span>' : '';
 
   return `
     <div class="glass-card stop-card" data-stop-id="${stop.id}">
       <div class="stop-icon">${stopIcon(stop.routeIds)}</div>
       <div class="stop-info">
-        <div class="stop-name">${stop.name}</div>
+        <div class="stop-name">${stop.name}${favMark}</div>
         <div class="stop-meta">Stop #${stop.code || stop.id}${stop.direction ? ' · ' + stop.direction : ''}</div>
       </div>
       <div class="stop-distance">${distStr}</div>
@@ -200,6 +264,7 @@ async function openStop(stopId) {
   document.getElementById('detail-stop-name').textContent = state.selectedStop.name;
 
   showDetailView();
+  updateFavBtn();
   await refreshArrivals();
 
   clearInterval(state.arrivalTimer);
@@ -334,6 +399,13 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(state.arrivalTimer);
       showView(btn.dataset.view);
     });
+  });
+
+  // Favorite button
+  document.getElementById('btn-favorite').addEventListener('click', () => {
+    if (!state.selectedStop) return;
+    toggleFavorite(state.selectedStop);
+    updateFavBtn();
   });
 
   // Back button

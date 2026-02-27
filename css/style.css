@@ -130,6 +130,11 @@ body.light-mode::after {
 }
 .icon-btn:hover  { color: var(--accent); }
 .icon-btn:active { transform: scale(0.92); background: var(--glass-bg-raised); }
+.icon-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
 
 /* ─── Search bar ────────────────────────────────────────────────────────────── */
 .search-wrap {
@@ -417,6 +422,46 @@ body.light-mode .nav-bar {
 .settings-row:last-child { border-bottom: none; }
 .settings-row-label { font-size: 15px; }
 .settings-row-value { font-size: 14px; color: var(--text-secondary); }
+
+/* ─── Theme transition ──────────────────────────────────────────────────────── */
+.theme-transitioning * {
+  transition: background 0.35s ease, color 0.35s ease,
+              border-color 0.35s ease, box-shadow 0.35s ease !important;
+}
+
+/* ─── Favorites ──────────────────────────────────────────────────────────────── */
+.fav-btn.is-favorite { color: #f59e0b; }
+
+.stop-fav-mark {
+  color: #f59e0b;
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+.fav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--glass-border);
+}
+.fav-item:last-child { border-bottom: none; }
+.fav-item-name { font-size: 15px; font-weight: 500; }
+.fav-item-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+.fav-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+  transition: color 0.15s, background 0.15s;
+}
+.fav-remove:hover { color: #ef4444; background: rgba(239, 68, 68, 0.10); }
 
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
