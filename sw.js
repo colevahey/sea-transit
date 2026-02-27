@@ -1,15 +1,9 @@
-const CACHE_NAME = 'sea-transit-v2';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/js/app.js',
-  '/manifest.json',
-];
+const CACHE_NAME = 'sea-transit-v1';
+const PRECACHE = ['/icons/icon-192.png', '/icons/icon-512.png', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
   );
   self.skipWaiting();
 });
@@ -27,7 +21,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Network-first for API calls
+  // Network-only for API calls
   if (url.hostname.includes('onebusaway.org')) {
     event.respondWith(
       fetch(request).catch(() =>
@@ -39,7 +33,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets
+  // Network-first for app shell (HTML, CSS, JS)
+  if (['/', '/index.html', '/js/app.js', '/css/style.css'].some((p) => url.pathname === p || url.pathname.endsWith(p))) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        fetch(request)
+          .then((res) => { cache.put(request, res.clone()); return res; })
+          .catch(() => caches.match(request))
+      )
+    );
+    return;
+  }
+
+  // Cache-first for everything else (icons, manifest, etc.)
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request))
   );
