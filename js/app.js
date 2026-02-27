@@ -101,6 +101,9 @@ const state = {
   selectedStop: null,
   arrivals: [],
   arrivalTimer: null,
+  watchId: null,
+  lastArrivalsUpdate: 0,
+  tickTimer: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -223,6 +226,18 @@ function getUserLocation() {
   });
 }
 
+// ─── Real-time distance updater ───────────────────────────────────────────────
+function updateNearbyDistances() {
+  if (state.currentView !== 'nearby') return;
+  document.querySelectorAll('#stops-list .stop-card').forEach(card => {
+    const stop = state.stops.find(s => s.id === card.dataset.stopId);
+    if (!stop || !state.userLat) return;
+    const dist = haversineM(state.userLat, state.userLon, stop.lat, stop.lon);
+    const el = card.querySelector('.stop-distance');
+    if (el) el.textContent = formatDist(dist);
+  });
+}
+
 // ─── Nearby stops view ────────────────────────────────────────────────────────
 async function loadNearbyStops() {
   const list = document.getElementById('stops-list');
@@ -238,6 +253,9 @@ async function loadNearbyStops() {
     });
 
     state.stops = data.list || [];
+    state.stops.sort((a, b) =>
+      haversineM(lat, lon, a.lat, a.lon) - haversineM(lat, lon, b.lat, b.lon)
+    );
 
     if (state.stops.length === 0) {
       list.innerHTML = stateBox('search', 'No stops found within 500 m.');
@@ -277,7 +295,25 @@ function renderStopCard(stop, userLat, userLon) {
 }
 
 // ─── Stop detail / arrivals view ──────────────────────────────────────────────
+function clearArrivalTimers() {
+  clearInterval(state.arrivalTimer);
+  clearInterval(state.tickTimer);
+}
+
+function tickArrivals() {
+  if (!state.arrivals.length) return;
+  const list = document.getElementById('arrivals-list');
+  if (list) list.innerHTML = state.arrivals.map(renderArrivalRow).join('');
+  const el = document.getElementById('arrivals-updated');
+  if (!el || !state.lastArrivalsUpdate) return;
+  const secs = Math.floor((Date.now() - state.lastArrivalsUpdate) / 1000);
+  if (secs < 15)       el.textContent = 'Updated just now';
+  else if (secs < 60)  el.textContent = `Updated ${secs}s ago`;
+  else                 el.textContent = `Updated ${Math.floor(secs / 60)}m ago`;
+}
+
 async function openStop(stopId) {
+  clearArrivalTimers();
   const stop = state.stops.find((s) => s.id === stopId);
   state.selectedStop = stop || { id: stopId, name: 'Stop', code: '' };
   document.getElementById('detail-stop-name').textContent = state.selectedStop.name;
@@ -286,8 +322,8 @@ async function openStop(stopId) {
   updateFavBtn();
   await refreshArrivals();
 
-  clearInterval(state.arrivalTimer);
   state.arrivalTimer = setInterval(refreshArrivals, 30000);
+  state.tickTimer = setInterval(tickArrivals, 15000);
 }
 
 function showDetailView() {
@@ -315,6 +351,9 @@ async function refreshArrivals() {
     }
 
     list.innerHTML = arrivals.map(renderArrivalRow).join('');
+    state.lastArrivalsUpdate = Date.now();
+    const updatedEl = document.getElementById('arrivals-updated');
+    if (updatedEl) updatedEl.textContent = 'Updated just now';
   } catch (err) {
     list.innerHTML = stateBox('warning', err.message);
   }
@@ -398,7 +437,7 @@ async function searchStops(query) {
 }
 
 // ─── Favorites home panels ────────────────────────────────────────────────────
-function renderFavPanel(fav, arrivals) {
+function renderFavPanel(fav, arrivals, distStr = '') {
   const arrivalsHtml = arrivals.length === 0
     ? '<div class="fav-arrival-row fav-arrival-empty">No upcoming arrivals</div>'
     : arrivals.map(a => {
@@ -418,9 +457,12 @@ function renderFavPanel(fav, arrivals) {
     <div class="glass-card fav-panel" data-stop-id="${fav.id}">
       <div class="fav-panel-header">
         <span class="fav-panel-name">${fav.name}</span>
-        <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
-          <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <div class="fav-panel-right">
+          ${distStr ? `<span class="fav-panel-dist">${distStr}</span>` : ''}
+          <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+            <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
       </div>
       <div class="fav-panel-arrivals">${arrivalsHtml}</div>
     </div>`;
@@ -438,14 +480,25 @@ async function renderFavPanels() {
   }
   section.classList.remove('hidden');
 
+  // Get user location if not yet known
+  if (!state.userLat) {
+    try {
+      const { lat, lon } = await getUserLocation();
+      state.userLat = lat;
+      state.userLon = lon;
+    } catch {}
+  }
+
   // Skeleton cards while loading
   container.innerHTML = favs.map(fav => `
     <div class="glass-card fav-panel" data-stop-id="${fav.id}">
       <div class="fav-panel-header">
         <span class="fav-panel-name">${fav.name}</span>
-        <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
-          <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <div class="fav-panel-right">
+          <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+            <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
       </div>
       <div class="fav-panel-arrivals">
         <div class="fav-arrival-row" style="justify-content:center">
@@ -461,20 +514,39 @@ async function renderFavPanels() {
     )
   );
 
-  // Ensure fav stops are in state.stops for back-nav
-  favs.forEach(fav => {
-    if (!state.stops.find(s => s.id === fav.id)) {
-      state.stops.push({ id: fav.id, name: fav.name, code: fav.code || '' });
-    }
-  });
-
-  // Render panels with real data
-  container.innerHTML = favs.map((fav, i) => {
+  // Enrich favs with lat/lon from API references and arrivals
+  const enriched = favs.map((fav, i) => {
     const result = results[i];
+    const refs = result.status === 'fulfilled' ? result.value.references?.stops : null;
+    const stopRef = refs?.find(s => s.id === fav.id);
     const arrivals = result.status === 'fulfilled'
       ? (result.value.entry?.arrivalsAndDepartures || []).slice(0, 3)
       : [];
-    return renderFavPanel(fav, arrivals);
+    return { ...fav, lat: stopRef?.lat, lon: stopRef?.lon, arrivals };
+  });
+
+  // Sort by distance if we have location
+  if (state.userLat && state.userLon) {
+    enriched.sort((a, b) => {
+      const dA = a.lat ? haversineM(state.userLat, state.userLon, a.lat, a.lon) : Infinity;
+      const dB = b.lat ? haversineM(state.userLat, state.userLon, b.lat, b.lon) : Infinity;
+      return dA - dB;
+    });
+  }
+
+  // Ensure enriched fav stops are in state.stops for back-nav
+  enriched.forEach(fav => {
+    if (!state.stops.find(s => s.id === fav.id)) {
+      state.stops.push({ id: fav.id, name: fav.name, code: fav.code || '', lat: fav.lat, lon: fav.lon });
+    }
+  });
+
+  // Render panels with real data and distance
+  container.innerHTML = enriched.map(fav => {
+    const distStr = (state.userLat && fav.lat)
+      ? formatDist(haversineM(state.userLat, state.userLon, fav.lat, fav.lon))
+      : '';
+    return renderFavPanel(fav, fav.arrivals, distStr);
   }).join('');
 
   container.querySelectorAll('.fav-panel').forEach(panel => {
@@ -508,6 +580,26 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
 
+  // Real viewport height for iOS standalone PWA (Task G)
+  function setRealVH() {
+    document.documentElement.style.setProperty('--real-vh', `${window.innerHeight}px`);
+  }
+  setRealVH();
+  window.addEventListener('resize', setRealVH);
+
+  // Watch position for real-time distance updates (Task C)
+  if (navigator.geolocation) {
+    state.watchId = navigator.geolocation.watchPosition(
+      pos => {
+        state.userLat = pos.coords.latitude;
+        state.userLon = pos.coords.longitude;
+        updateNearbyDistances();
+      },
+      () => {},
+      { enableHighAccuracy: true }
+    );
+  }
+
   // Restore theme preference
   const savedTheme = localStorage.getItem('theme');
   applyTheme(savedTheme === 'light');
@@ -518,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Nav bar
   document.querySelectorAll('.nav-item').forEach((btn) => {
     btn.addEventListener('click', () => {
-      clearInterval(state.arrivalTimer);
+      clearArrivalTimers();
       showView(btn.dataset.view);
     });
   });
@@ -532,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Back button
   document.getElementById('btn-back').addEventListener('click', () => {
-    clearInterval(state.arrivalTimer);
+    clearArrivalTimers();
     showView('nearby');
   });
 

@@ -50,6 +50,8 @@ html, body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
+html { height: -webkit-fill-available; }
+body { min-height: -webkit-fill-available; }
 
 body {
   background: linear-gradient(160deg, var(--bg-start) 0%, var(--bg-end) 100%);
@@ -91,6 +93,7 @@ body.light-mode::after {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  height: var(--real-vh, 100dvh);
   position: relative;
   z-index: 1;
   padding-top: var(--status-height);
@@ -183,6 +186,18 @@ body.light-mode::after {
   padding: 0 20px 8px;
 }
 
+.arrivals-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-right: 20px;
+}
+.arrivals-updated {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding-bottom: 8px;
+}
+
 /* ─── Scrollable content area ───────────────────────────────────────────────── */
 .content {
   flex: 1;
@@ -242,6 +257,7 @@ body.light-mode::after {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text-primary);
 }
 .stop-meta {
   font-size: 12px;
@@ -437,6 +453,7 @@ body.light-mode .nav-bar {
   color: #f59e0b;
   margin-left: 4px;
   font-size: 11px;
+  vertical-align: middle;
 }
 
 .fav-item {
@@ -454,18 +471,12 @@ body.light-mode .nav-bar {
 /* ─── Favorite home panels ───────────────────────────────────────────────────── */
 .fav-panels-scroll {
   display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  padding: 0 20px 12px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 20px 4px;
 }
-.fav-panels-scroll::-webkit-scrollbar { display: none; }
 
 .fav-panel {
-  flex-shrink: 0;
-  width: 200px;
-  scroll-snap-align: start;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
@@ -479,6 +490,12 @@ body.light-mode .nav-bar {
 .fav-panel-name {
   font-size: 13px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fav-panel-right {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.fav-panel-dist {
+  font-size: 11px; color: var(--text-tertiary);
 }
 
 .fav-panel-arrivals { padding: 2px 0; }
