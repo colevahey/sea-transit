@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sea-transit-v1';
+const CACHE_NAME = 'sea-transit-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
