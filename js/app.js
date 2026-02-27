@@ -153,9 +153,9 @@ function renderFavoritesSettings() {
         <div class="fav-item-name">${f.name}</div>
         <div class="fav-item-meta">Stop #${f.code || f.id}</div>
       </div>
-      <button class="fav-remove" data-fav-id="${f.id}" aria-label="Remove">×</button>
+      <button class="icon-btn fav-btn is-favorite" data-fav-id="${f.id}" aria-label="Remove from favorites">${icon('starFilled')}</button>
     </div>`).join('')}</div>`;
-  section.querySelectorAll('.fav-remove').forEach((btn) => {
+  section.querySelectorAll('.fav-btn[data-fav-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
       saveFavorites(getFavorites().filter(f => f.id !== btn.dataset.favId));
       renderFavoritesSettings();

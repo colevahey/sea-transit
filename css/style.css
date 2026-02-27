@@ -449,19 +449,6 @@ body.light-mode .nav-bar {
 .fav-item-name { font-size: 15px; font-weight: 500; }
 .fav-item-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 
-.fav-remove {
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-family: inherit;
-  transition: color 0.15s, background 0.15s;
-}
-.fav-remove:hover { color: #ef4444; background: rgba(239, 68, 68, 0.10); }
 
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

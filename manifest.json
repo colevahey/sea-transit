@@ -1,11 +1,11 @@
 {
-  "name": "Seattle Transit",
-  "short_name": "SEA Transit",
+  "name": "R(SEA)V Transit",
+  "short_name": "R(SEA)V",
   "description": "Real-time Seattle transit arrivals powered by OneBusAway",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a1628",
-  "theme_color": "#0a1628",
+  "background_color": "#080c0a",
+  "theme_color": "#080c0a",
   "orientation": "portrait",
   "icons": [
     {
