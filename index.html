@@ -22,7 +22,7 @@
 
     <!-- ── Top Bar ──────────────────────────────────────────────────────── -->
     <div class="top-bar">
-      <h1>R<span>(SEA)</span>V Transit</h1>
+      <h1>R<span>(SEA)</span>V <span>Transit</span></h1>
       <button class="icon-btn" id="btn-theme" aria-label="Toggle theme">
         <!-- icon injected by app.js -->
       </button>
@@ -50,6 +50,10 @@
 
       <!-- Nearby stops view -->
       <div id="view-nearby" class="view active">
+        <div id="fav-panels-section" class="hidden">
+          <p class="section-label">Favorites</p>
+          <div id="fav-panels" class="fav-panels-scroll"></div>
+        </div>
         <p class="section-label">Nearby Stops</p>
         <div id="stops-list" class="card-list">
           <div class="state-box">

@@ -157,8 +157,27 @@ function renderFavoritesSettings() {
     </div>`).join('')}</div>`;
   section.querySelectorAll('.fav-btn[data-fav-id]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      saveFavorites(getFavorites().filter(f => f.id !== btn.dataset.favId));
-      renderFavoritesSettings();
+      const stopId = btn.dataset.favId;
+      const row = btn.closest('.fav-item');
+      if (btn.classList.contains('is-favorite')) {
+        // Remove from favorites — dim in place, swap to empty star
+        saveFavorites(getFavorites().filter(f => f.id !== stopId));
+        btn.innerHTML = icon('star');
+        btn.classList.remove('is-favorite');
+        row.classList.add('fav-item--removed');
+      } else {
+        // Re-add to favorites — restore opacity, swap back to filled star
+        const name = row.querySelector('.fav-item-name').textContent;
+        const code = row.querySelector('.fav-item-meta').textContent.replace('Stop #', '').trim();
+        const favs = getFavorites();
+        if (!favs.find(f => f.id === stopId)) {
+          favs.push({ id: stopId, name, code });
+          saveFavorites(favs);
+        }
+        btn.innerHTML = icon('starFilled');
+        btn.classList.add('is-favorite');
+        row.classList.remove('fav-item--removed');
+      }
     });
   });
 }
@@ -176,7 +195,7 @@ function showView(name) {
 
   state.currentView = name;
 
-  if (name === 'nearby') loadNearbyStops();
+  if (name === 'nearby') { renderFavPanels(); loadNearbyStops(); }
   if (name === 'settings') renderFavoritesSettings();
 }
 
@@ -332,33 +351,135 @@ function renderArrivalRow(arrival) {
 }
 
 // ─── Stop search ──────────────────────────────────────────────────────────────
+function fuzzyMatch(stop, q) {
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const haystack = [stop.name, stop.code, ...(stop.routeIds || [])].join(' ').toLowerCase();
+  return tokens.every(t => haystack.includes(t));
+}
+
 async function searchStops(query) {
   if (query.length < 2) return;
   const list = document.getElementById('stops-list');
   list.innerHTML = renderLoading('Searching…');
 
   try {
-    const data = await apiFetch('stops-for-location', {
+    // Client-side filter runs immediately on already-loaded stops
+    const clientMatches = state.stops.filter(s => fuzzyMatch(s, query));
+
+    // API call in parallel for stop-code lookups
+    const apiResults = await apiFetch('stops-for-location', {
       lat: state.userLat || 47.6062,
       lon: state.userLon || -122.3321,
       query,
       radius: 5000,
       maxCount: 20,
-    });
+    }).then(data => data.list || []).catch(() => []);
 
-    state.stops = data.list || [];
-    if (state.stops.length === 0) {
+    // Merge: client matches first, append API results not already present
+    const seen = new Set(clientMatches.map(s => s.id));
+    const merged = [...clientMatches, ...apiResults.filter(s => !seen.has(s.id))];
+
+    // Absorb new API stops into state
+    const allIds = new Set(state.stops.map(s => s.id));
+    apiResults.forEach(s => { if (!allIds.has(s.id)) state.stops.push(s); });
+
+    if (merged.length === 0) {
       list.innerHTML = stateBox('search', `No stops found for "${query}".`);
       return;
     }
 
-    list.innerHTML = state.stops.map((s) => renderStopCard(s, state.userLat, state.userLon)).join('');
+    list.innerHTML = merged.map((s) => renderStopCard(s, state.userLat, state.userLon)).join('');
     list.querySelectorAll('.stop-card').forEach((el) => {
       el.addEventListener('click', () => openStop(el.dataset.stopId));
     });
   } catch (err) {
     list.innerHTML = stateBox('warning', err.message);
   }
+}
+
+// ─── Favorites home panels ────────────────────────────────────────────────────
+function renderFavPanel(fav, arrivals) {
+  const arrivalsHtml = arrivals.length === 0
+    ? '<div class="fav-arrival-row fav-arrival-empty">No upcoming arrivals</div>'
+    : arrivals.map(a => {
+        const now = Date.now();
+        const predicted = a.predictedArrivalTime || a.scheduledArrivalTime;
+        const minsAway = Math.round((predicted - now) / 60000);
+        const displayMins = minsAway <= 0 ? 'Now' : minsAway;
+        const minLabel = minsAway <= 0 ? '' : ' min';
+        return `
+          <div class="fav-arrival-row">
+            <div class="route-badge">${a.routeShortName || '?'}</div>
+            <div class="fav-arrival-dest">${a.tripHeadsign || 'Unknown'}</div>
+            <div class="fav-arrival-time"><span class="minutes">${displayMins}</span><span class="min-label">${minLabel}</span></div>
+          </div>`;
+      }).join('');
+  return `
+    <div class="glass-card fav-panel" data-stop-id="${fav.id}">
+      <div class="fav-panel-header">
+        <span class="fav-panel-name">${fav.name}</span>
+        <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+          <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="fav-panel-arrivals">${arrivalsHtml}</div>
+    </div>`;
+}
+
+async function renderFavPanels() {
+  const section = document.getElementById('fav-panels-section');
+  const container = document.getElementById('fav-panels');
+  if (!section || !container) return;
+
+  const favs = getFavorites();
+  if (favs.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  // Skeleton cards while loading
+  container.innerHTML = favs.map(fav => `
+    <div class="glass-card fav-panel" data-stop-id="${fav.id}">
+      <div class="fav-panel-header">
+        <span class="fav-panel-name">${fav.name}</span>
+        <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+          <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="fav-panel-arrivals">
+        <div class="fav-arrival-row" style="justify-content:center">
+          <div class="spinner" style="margin:6px auto;width:20px;height:20px;border-width:2px"></div>
+        </div>
+      </div>
+    </div>`).join('');
+
+  // Fetch arrivals for all favs in parallel
+  const results = await Promise.allSettled(
+    favs.map(fav =>
+      apiFetch(`arrivals-and-departures-for-stop/${fav.id}`, { minutesBefore: 0, minutesAfter: 60 })
+    )
+  );
+
+  // Ensure fav stops are in state.stops for back-nav
+  favs.forEach(fav => {
+    if (!state.stops.find(s => s.id === fav.id)) {
+      state.stops.push({ id: fav.id, name: fav.name, code: fav.code || '' });
+    }
+  });
+
+  // Render panels with real data
+  container.innerHTML = favs.map((fav, i) => {
+    const result = results[i];
+    const arrivals = result.status === 'fulfilled'
+      ? (result.value.entry?.arrivalsAndDepartures || []).slice(0, 3)
+      : [];
+    return renderFavPanel(fav, arrivals);
+  }).join('');
+
+  container.querySelectorAll('.fav-panel').forEach(panel => {
+    panel.addEventListener('click', () => openStop(panel.dataset.stopId));
+  });
 }
 
 // ─── Utility functions ────────────────────────────────────────────────────────
@@ -373,7 +494,8 @@ function haversineM(lat1, lon1, lat2, lon2) {
 }
 
 function formatDist(m) {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1609).toFixed(1)} mi`;
+  const mi = m / 1609.34;
+  return mi < 1 ? `${mi.toFixed(2)} mi` : `${mi.toFixed(1)} mi`;
 }
 
 function renderLoading(msg = 'Loading…') {
