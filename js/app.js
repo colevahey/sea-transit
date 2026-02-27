@@ -1,8 +1,8 @@
 /* ─── Seattle Transit PWA ───────────────────────────────────────────────────── */
 
-// Load API key from config.js (not committed to git)
-const API_KEY  = (typeof CONFIG !== 'undefined' && CONFIG.API_KEY) || '';
-const BASE_URL = (typeof CONFIG !== 'undefined' && CONFIG.BASE_URL) || 'https://api.pugetsound.onebusaway.org/api/where';
+// All API calls go through the server-side proxy so the key is never exposed.
+// The proxy lives at /api/transit (Netlify Function).
+const PROXY_URL = '/api/transit';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
@@ -33,10 +33,9 @@ function showView(name) {
 }
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
-async function apiFetch(path, params = {}) {
-  if (!API_KEY) throw new Error('NO_API_KEY');
-  const url = new URL(`${BASE_URL}/${path}.json`);
-  url.searchParams.set('key', API_KEY);
+async function apiFetch(endpoint, params = {}) {
+  const url = new URL(PROXY_URL, location.origin);
+  url.searchParams.set('endpoint', endpoint);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`API error ${res.status}`);
@@ -61,11 +60,6 @@ function getUserLocation() {
 async function loadNearbyStops() {
   const list = document.getElementById('stops-list');
   list.innerHTML = renderLoading('Finding stops near you…');
-
-  if (!API_KEY) {
-    list.innerHTML = renderNoKey();
-    return;
-  }
 
   try {
     const { lat, lon } = await getUserLocation();
@@ -231,8 +225,7 @@ async function searchStops(query) {
 
 // ─── Settings view ────────────────────────────────────────────────────────────
 function renderSettings() {
-  const keyEl = document.getElementById('settings-api-key');
-  if (keyEl) keyEl.value = API_KEY !== 'YOUR_API_KEY_HERE' ? API_KEY : '';
+  // API key is managed server-side — nothing to render here
 }
 
 // ─── Utility functions ────────────────────────────────────────────────────────
@@ -263,12 +256,6 @@ function renderLoading(msg = 'Loading…') {
   return `<div class="state-box"><div class="spinner"></div><p>${msg}</p></div>`;
 }
 
-function renderNoKey() {
-  return `<div class="state-box">
-    <div class="icon">🔑</div>
-    <p>Add your OneBusAway API key in <strong>Settings</strong> to get started.</p>
-  </div>`;
-}
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -302,18 +289,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     searchDebounce = setTimeout(() => searchStops(q), 350);
   });
-
-  // Settings: save API key to localStorage on change
-  document.getElementById('settings-api-key')?.addEventListener('change', (e) => {
-    localStorage.setItem('oba_api_key', e.target.value.trim());
-    window.location.reload(); // reload so config picks it up
-  });
-
-  // Restore API key from localStorage if config placeholder is still set
-  const stored = localStorage.getItem('oba_api_key');
-  if (stored && typeof CONFIG !== 'undefined' && CONFIG.API_KEY === 'YOUR_API_KEY_HERE') {
-    CONFIG.API_KEY = stored;
-  }
 
   // Initial view
   showView('nearby');

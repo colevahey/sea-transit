@@ -1,0 +1,2 @@
+# Never deploy the local API key file
+config.js
