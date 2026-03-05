@@ -72,6 +72,18 @@ const ICONS = {
   starFilled: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
   </svg>`,
+
+  map: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+    <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+  </svg>`,
+
+  list: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+    <line x1="8" y1="18" x2="21" y2="18"/>
+    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/>
+    <line x1="3" y1="18" x2="3.01" y2="18"/>
+  </svg>`,
 };
 
 function icon(name) {
@@ -100,6 +112,7 @@ const state = {
   userLat: null,
   userLon: null,
   stops: [],
+  routes: null,
   selectedStop: null,
   arrivals: [],
   arrivalTimer: null,
@@ -108,6 +121,11 @@ const state = {
   tickTimer: null,
   countdownSecs: REFRESH_INTERVAL,
   countdownTimer: null,
+  mapView: false,
+  leafletMap: null,
+  leafletTileLayer: null,
+  leafletUserMarker: null,
+  leafletStopMarkers: [],
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -202,7 +220,24 @@ function showView(name) {
 
   state.currentView = name;
 
-  if (name === 'nearby') { renderFavPanels(); loadNearbyStops(); }
+  // Map toggle only visible in Nearby
+  const mapToggleBtn = document.getElementById('btn-map-toggle');
+  if (mapToggleBtn) mapToggleBtn.classList.toggle('hidden', name !== 'nearby');
+
+  // Handle map/content switching
+  const content = document.querySelector('.content');
+  const mapContainer = document.getElementById('map-container');
+  if (name === 'nearby' && state.mapView) {
+    content.classList.add('hidden');
+    mapContainer.classList.remove('hidden');
+    if (state.leafletMap) requestAnimationFrame(() => state.leafletMap.invalidateSize());
+  } else {
+    content.classList.remove('hidden');
+    if (mapContainer) mapContainer.classList.add('hidden');
+  }
+
+  if (name === 'nearby')   { renderFavPanels(); loadNearbyStops(); }
+  if (name === 'lines')    { state.routes = null; loadNearbyRoutes(); }
   if (name === 'settings') renderFavoritesSettings();
 }
 
@@ -270,6 +305,9 @@ async function loadNearbyStops() {
     list.querySelectorAll('.stop-card').forEach((el) => {
       el.addEventListener('click', () => openStop(el.dataset.stopId));
     });
+
+    // Refresh map markers if map is active
+    if (state.mapView) updateMapMarkers();
   } catch (err) {
     if (err.code === 1) {
       list.innerHTML = stateBox('locationOff', 'Location access denied. Enable it in browser settings.');
@@ -351,6 +389,15 @@ function showDetailView() {
   document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
   document.getElementById('view-detail').classList.add('active');
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+
+  // Ensure content area is visible (detail view lives inside it)
+  document.querySelector('.content').classList.remove('hidden');
+  const mapContainer = document.getElementById('map-container');
+  if (mapContainer) mapContainer.classList.add('hidden');
+
+  // Hide map toggle in detail
+  const mapToggleBtn = document.getElementById('btn-map-toggle');
+  if (mapToggleBtn) mapToggleBtn.classList.add('hidden');
 }
 
 async function refreshArrivals() {
@@ -411,10 +458,27 @@ function renderArrivalRow(arrival) {
 }
 
 // ─── Stop search ──────────────────────────────────────────────────────────────
-function fuzzyMatch(stop, q) {
+function scoreStop(stop, q) {
   const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const haystack = [stop.name, stop.code, ...(stop.routeIds || [])].join(' ').toLowerCase();
-  return tokens.every(t => haystack.includes(t));
+  const words = [stop.name, stop.code, stop.direction, ...(stop.routeIds || [])]
+    .filter(Boolean).join(' ').toLowerCase().split(/[\s\-\/]+/);
+
+  let score = 0;
+  for (const t of tokens) {
+    const exact  = words.some(w => w === t);
+    const prefix = words.some(w => w.startsWith(t));
+    const sub    = words.some(w => w.includes(t));
+    if (exact)       score += 3;
+    else if (prefix) score += 2;
+    else if (sub)    score += 1;
+    else             return 0; // token not found at all → no match
+  }
+
+  // Boost when query matches stop name words
+  const nameWords = stop.name.toLowerCase().split(/[\s\-\/]+/);
+  if (tokens.every(t => nameWords.some(w => w.startsWith(t)))) score += 5;
+
+  return score;
 }
 
 async function searchStops(query) {
@@ -423,8 +487,12 @@ async function searchStops(query) {
   list.innerHTML = renderLoading('Searching…');
 
   try {
-    // Client-side filter runs immediately on already-loaded stops
-    const clientMatches = state.stops.filter(s => fuzzyMatch(s, query));
+    // Client-side filter: score and sort
+    const clientMatches = state.stops
+      .map(s => ({ stop: s, score: scoreStop(s, query) }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.stop);
 
     // API call in parallel for stop-code lookups
     const apiResults = await apiFetch('stops-for-location', {
@@ -452,6 +520,142 @@ async function searchStops(query) {
     list.querySelectorAll('.stop-card').forEach((el) => {
       el.addEventListener('click', () => openStop(el.dataset.stopId));
     });
+  } catch (err) {
+    list.innerHTML = stateBox('warning', err.message);
+  }
+}
+
+// ─── Lines (by-route) view ────────────────────────────────────────────────────
+function routeTypeLabel(type) {
+  if (type === 3) return 'bus';
+  if (type === 4) return 'ferry';
+  if ([0, 1, 2].includes(type)) return 'rail';
+  return 'bus';
+}
+
+function renderRouteCard(route) {
+  const typeClass = routeTypeLabel(route.type);
+  const shortName = route.shortName || route.longName || '?';
+  const longName  = route.longName || '';
+  const typeLabel = typeClass.charAt(0).toUpperCase() + typeClass.slice(1);
+  return `
+    <div class="glass-card route-card" data-route-id="${route.id}"
+         data-route-short="${shortName}" data-route-long="${longName}" data-route-type="${typeClass}">
+      <div class="route-card-badge route-type-${typeClass}">${shortName}</div>
+      <div class="route-card-info">
+        <div class="route-card-name">${longName || shortName}</div>
+        <div class="route-card-type">${typeLabel}</div>
+      </div>
+      <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
+        <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>`;
+}
+
+async function loadNearbyRoutes() {
+  const list = document.getElementById('routes-list');
+  if (!list) return;
+
+  // Use cached routes if available
+  if (state.routes && state.routes.length > 0) {
+    list.innerHTML = state.routes.map(renderRouteCard).join('');
+    list.querySelectorAll('.route-card').forEach(el => {
+      el.addEventListener('click', () => openRoute(el));
+    });
+    return;
+  }
+
+  list.innerHTML = renderLoading('Loading routes…');
+
+  try {
+    const lat = state.userLat || 47.6062;
+    const lon = state.userLon || -122.3321;
+
+    const data = await apiFetch('routes-for-location', { lat, lon, radius: 1000 });
+    const routes = data.list || [];
+
+    if (routes.length === 0) {
+      list.innerHTML = stateBox('search', 'No routes found nearby.');
+      return;
+    }
+
+    routes.sort((a, b) => {
+      if (a.type !== b.type) return a.type - b.type;
+      return (a.shortName || '').localeCompare(b.shortName || '', undefined, { numeric: true });
+    });
+
+    state.routes = routes;
+    list.innerHTML = routes.map(renderRouteCard).join('');
+    list.querySelectorAll('.route-card').forEach(el => {
+      el.addEventListener('click', () => openRoute(el));
+    });
+  } catch (err) {
+    list.innerHTML = stateBox('warning', err.message);
+  }
+}
+
+async function openRoute(cardEl) {
+  const routeId   = cardEl.dataset.routeId;
+  const shortName = cardEl.dataset.routeShort;
+  const longName  = cardEl.dataset.routeLong;
+  const typeClass = cardEl.dataset.routeType;
+
+  // Update detail header
+  const badge = document.getElementById('route-detail-badge');
+  const namEl = document.getElementById('route-detail-name');
+  if (badge) { badge.textContent = shortName; badge.className = `route-badge route-type-${typeClass}`; }
+  if (namEl) namEl.textContent = longName || shortName;
+
+  // Show route detail view
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-route-detail').classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  await loadRouteArrivals(shortName);
+}
+
+async function loadRouteArrivals(routeShortName) {
+  const list = document.getElementById('route-arrivals-list');
+  if (!list) return;
+  list.innerHTML = renderLoading('Fetching arrivals…');
+
+  try {
+    const stops = state.stops.slice(0, 10); // limit to 10 nearby stops
+    if (stops.length === 0) {
+      list.innerHTML = stateBox('clock', 'No nearby stops loaded yet.');
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      stops.map(s => apiFetch(`arrivals-and-departures-for-stop/${s.id}`, {
+        minutesBefore: 0, minutesAfter: 60,
+      }))
+    );
+
+    const arrivals = [];
+    results.forEach(r => {
+      if (r.status !== 'fulfilled') return;
+      const rows = r.value.entry?.arrivalsAndDepartures || [];
+      rows.forEach(a => {
+        if ((a.routeShortName || '').toLowerCase() === routeShortName.toLowerCase()) {
+          arrivals.push(a);
+        }
+      });
+    });
+
+    // Sort by predicted arrival time, take top 15
+    arrivals.sort((a, b) => {
+      const tA = a.predictedArrivalTime || a.scheduledArrivalTime;
+      const tB = b.predictedArrivalTime || b.scheduledArrivalTime;
+      return tA - tB;
+    });
+    const top15 = arrivals.slice(0, 15);
+
+    if (top15.length === 0) {
+      list.innerHTML = stateBox('clock', 'No upcoming arrivals for this route.');
+      return;
+    }
+    list.innerHTML = top15.map(renderArrivalRow).join('');
   } catch (err) {
     list.innerHTML = stateBox('warning', err.message);
   }
@@ -595,6 +799,100 @@ function renderLoading(msg = 'Loading…') {
   return `<div class="state-box"><div class="spinner"></div><p>${msg}</p></div>`;
 }
 
+// ─── Map view ─────────────────────────────────────────────────────────────────
+const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const TILE_ATTR  = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>';
+
+function initMap() {
+  if (state.leafletMap) return;
+
+  const lat = state.userLat || 47.6062;
+  const lon = state.userLon || -122.3321;
+
+  const map = L.map('stops-map', {
+    center: [lat, lon],
+    zoom: 15,
+    zoomControl: false,
+  });
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  const isLight = document.body.classList.contains('light-mode');
+  state.leafletTileLayer = L.tileLayer(isLight ? TILE_LIGHT : TILE_DARK, {
+    attribution: TILE_ATTR,
+    subdomains: 'abcd',
+    maxZoom: 20,
+  }).addTo(map);
+
+  state.leafletMap = map;
+  updateMapMarkers();
+}
+
+function updateMapMarkers() {
+  if (!state.leafletMap) return;
+
+  // User location
+  if (state.userLat) {
+    if (state.leafletUserMarker) {
+      state.leafletUserMarker.setLatLng([state.userLat, state.userLon]);
+    } else {
+      const userIcon = L.divIcon({
+        className: 'user-location-marker',
+        html: '<div class="user-location-pulse"></div><div class="user-location-dot"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+      state.leafletUserMarker = L.marker([state.userLat, state.userLon], { icon: userIcon })
+        .addTo(state.leafletMap);
+    }
+  }
+
+  // Stop markers
+  state.leafletStopMarkers.forEach(m => m.remove());
+  state.leafletStopMarkers = [];
+
+  state.stops.forEach(stop => {
+    if (!stop.lat || !stop.lon) return;
+    const stopIcon = L.divIcon({
+      className: 'stop-map-marker',
+      html: '<div class="stop-marker-dot"></div>',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+    });
+    const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon }).addTo(state.leafletMap);
+    marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
+    marker.on('click', () => openStop(stop.id));
+    state.leafletStopMarkers.push(marker);
+  });
+}
+
+function swapMapTiles() {
+  if (!state.leafletMap || !state.leafletTileLayer) return;
+  const isLight = document.body.classList.contains('light-mode');
+  state.leafletTileLayer.setUrl(isLight ? TILE_LIGHT : TILE_DARK);
+}
+
+function toggleMapView() {
+  state.mapView = !state.mapView;
+  const content      = document.querySelector('.content');
+  const mapContainer = document.getElementById('map-container');
+  const btn          = document.getElementById('btn-map-toggle');
+
+  if (state.mapView) {
+    content.classList.add('hidden');
+    mapContainer.classList.remove('hidden');
+    if (btn) { btn.innerHTML = icon('list'); btn.classList.add('active'); }
+    requestAnimationFrame(() => {
+      initMap();
+      if (state.leafletMap) state.leafletMap.invalidateSize();
+    });
+  } else {
+    content.classList.remove('hidden');
+    mapContainer.classList.add('hidden');
+    if (btn) { btn.innerHTML = icon('map'); btn.classList.remove('active'); }
+  }
+}
+
 // ─── Pull-to-refresh ─────────────────────────────────────────────────────────
 function initPullToRefresh() {
   const content = document.querySelector('.content');
@@ -691,8 +989,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('theme');
   applyTheme(savedTheme === 'light');
 
-  // Theme toggle
-  document.getElementById('btn-theme').addEventListener('click', toggleTheme);
+  // Theme toggle (also swaps map tiles)
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    toggleTheme();
+    swapMapTiles();
+  });
+
+  // Map toggle button
+  const mapToggleBtn = document.getElementById('btn-map-toggle');
+  if (mapToggleBtn) {
+    mapToggleBtn.innerHTML = icon('map');
+    mapToggleBtn.addEventListener('click', toggleMapView);
+  }
 
   // Nav bar
   document.querySelectorAll('.nav-item').forEach((btn) => {
@@ -709,10 +1017,15 @@ document.addEventListener('DOMContentLoaded', () => {
     updateFavBtn();
   });
 
-  // Back button
+  // Back button (stop detail → nearby)
   document.getElementById('btn-back').addEventListener('click', () => {
     clearArrivalTimers();
     showView('nearby');
+  });
+
+  // Back button (route detail → lines)
+  document.getElementById('btn-back-lines').addEventListener('click', () => {
+    showView('lines');
   });
 
   // Manual refresh button

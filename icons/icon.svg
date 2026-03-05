@@ -2,6 +2,9 @@
   <!-- Background -->
   <rect width="512" height="512" rx="112" fill="#080c0a"/>
 
+  <!-- All content shifted: right 14, up 31 to center bus body at (256,256) -->
+  <g transform="translate(14, -31)">
+
   <!-- Subtle green glow behind bus -->
   <ellipse cx="256" cy="290" rx="190" ry="60" fill="rgba(34,197,94,0.07)"/>
 
@@ -79,4 +82,6 @@
   <line x1="52" y1="240" x2="18" y2="240" stroke="#22c55e" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
   <line x1="52" y1="260" x2="8" y2="260" stroke="#22c55e" stroke-width="4" stroke-linecap="round" opacity="0.40"/>
   <line x1="52" y1="280" x2="22" y2="280" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" opacity="0.22"/>
+
+  </g>
 </svg>

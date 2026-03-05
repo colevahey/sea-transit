@@ -13,6 +13,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css" />
 
   <title>R(SEA)V Transit</title>
@@ -23,9 +24,14 @@
     <!-- ── Top Bar ──────────────────────────────────────────────────────── -->
     <div class="top-bar">
       <h1>R<span>(SEA)</span>V <span>Transit</span></h1>
-      <button class="icon-btn" id="btn-theme" aria-label="Toggle theme">
-        <!-- icon injected by app.js -->
-      </button>
+      <div class="top-bar-actions">
+        <button class="icon-btn hidden" id="btn-map-toggle" aria-label="Toggle map view">
+          <!-- icon injected by app.js -->
+        </button>
+        <button class="icon-btn" id="btn-theme" aria-label="Toggle theme">
+          <!-- icon injected by app.js -->
+        </button>
+      </div>
     </div>
 
     <!-- ── Search Bar ────────────────────────────────────────────────────── -->
@@ -107,6 +113,36 @@
         </div>
       </div>
 
+      <!-- Lines (by-route) view -->
+      <div id="view-lines" class="view">
+        <p class="section-label" style="padding-top:4px">Nearby Routes</p>
+        <div id="routes-list" class="card-list">
+          <div class="state-box"><div class="spinner"></div><p>Loading routes…</p></div>
+        </div>
+      </div>
+
+      <!-- Route detail sub-view (no nav tab) -->
+      <div id="view-route-detail" class="view">
+        <div class="detail-header">
+          <button class="back-btn" id="btn-back-lines">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+            Lines
+          </button>
+          <div id="route-detail-badge" class="route-badge"></div>
+          <span id="route-detail-name" class="detail-stop-name"></span>
+        </div>
+        <div class="arrivals-section-header">
+          <p class="section-label">Upcoming Arrivals</p>
+        </div>
+        <div class="card-list">
+          <div class="glass-card" id="route-arrivals-list">
+            <div class="state-box"><div class="spinner"></div><p>Loading arrivals…</p></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Settings view -->
       <div id="view-settings" class="view">
         <p class="section-label" style="padding-top:4px">Favorite Stops</p>
@@ -137,13 +173,22 @@
             </div>
             <div class="settings-row">
               <span class="settings-row-label">Get an API key</span>
-              <span class="settings-row-value">developer.onebusaway.org →</span>
+              <a class="settings-row-value settings-link"
+                 href="https://developer.onebusaway.org"
+                 target="_blank" rel="noopener noreferrer">
+                developer.onebusaway.org →
+              </a>
             </div>
           </div>
         </div>
       </div>
 
     </main>
+
+    <!-- ── Map container (sibling to .content) ──────────────────────────── -->
+    <div id="map-container" class="hidden">
+      <div id="stops-map"></div>
+    </div>
 
     <!-- ── Bottom Nav Bar ────────────────────────────────────────────────── -->
     <nav class="nav-bar" role="navigation">
@@ -153,6 +198,18 @@
           <circle cx="12" cy="9" r="2.5"/>
         </svg>
         <span>Nearby</span>
+      </button>
+
+      <button class="nav-item" data-view="lines" aria-label="Lines">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/>
+          <line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        <span>Lines</span>
       </button>
 
       <button class="nav-item" data-view="settings" aria-label="Settings">
@@ -166,6 +223,7 @@
 
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>
