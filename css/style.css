@@ -23,7 +23,7 @@
   /* Layout */
   --nav-height:        72px;
   --status-height:     env(safe-area-inset-top, 0px);
-  --safe-bottom:       env(safe-area-inset-bottom, 0px);
+  --safe-bottom:       env(safe-area-inset-bottom, 20px);
   --radius-sm:         10px;
   --radius-md:         16px;
   --radius-lg:         20px;
@@ -50,8 +50,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
-html { height: -webkit-fill-available; }
-body { min-height: -webkit-fill-available; }
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+body {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+}
 
 body {
   background: linear-gradient(160deg, var(--bg-start) 0%, var(--bg-end) 100%);
@@ -92,11 +98,14 @@ body.light-mode::after {
 #app {
   display: flex;
   flex-direction: column;
+  height: 100vh;
   height: 100dvh;
   height: var(--real-vh, 100dvh);
   position: relative;
   z-index: 1;
   padding-top: var(--status-height);
+  /* Extend background into the home indicator zone */
+  padding-bottom: 0;
 }
 
 /* ─── Top bar ───────────────────────────────────────────────────────────────── */
@@ -188,14 +197,49 @@ body.light-mode::after {
 
 .arrivals-section-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding-right: 20px;
+  padding-bottom: 2px;
 }
 .arrivals-updated {
   font-size: 11px;
   color: var(--text-tertiary);
   padding-bottom: 8px;
+}
+
+/* ─── Refresh bar ────────────────────────────────────────────────────────────── */
+.refresh-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.refresh-countdown {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  min-width: 32px;
+  text-align: right;
+}
+
+.refresh-now-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s, transform 0.2s;
+  flex-shrink: 0;
+}
+.refresh-now-btn:hover  { color: var(--accent); }
+.refresh-now-btn:active { background: var(--glass-bg-raised); }
+.refresh-now-btn svg { width: 14px; height: 14px; }
+.refresh-now-btn.spinning svg {
+  animation: spin 0.6s linear infinite;
 }
 
 /* ─── Scrollable content area ───────────────────────────────────────────────── */
@@ -204,7 +248,8 @@ body.light-mode::after {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+  padding-bottom: calc(var(--nav-height) + max(var(--safe-bottom), env(safe-area-inset-bottom, 20px)) + 16px);
+  position: relative;
 }
 .content::-webkit-scrollbar { display: none; }
 
@@ -335,9 +380,9 @@ body.light-mode::after {
 .nav-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  height: calc(var(--nav-height) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
-  background: rgba(8, 12, 10, 0.72);
+  /* Fill the full bottom including home indicator */
+  padding-bottom: max(var(--safe-bottom), env(safe-area-inset-bottom, 20px));
+  background: rgba(8, 12, 10, 0.85);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
   border-top: 1px solid var(--glass-border);
@@ -348,7 +393,7 @@ body.light-mode::after {
   z-index: 100;
 }
 body.light-mode .nav-bar {
-  background: rgba(240, 247, 243, 0.80);
+  background: rgba(240, 247, 243, 0.90);
 }
 
 .nav-item {
@@ -525,6 +570,60 @@ body.light-mode .nav-bar {
   flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--accent-bright);
   white-space: nowrap;
 }
+
+/* ─── Pull-to-refresh indicator ──────────────────────────────────────────────── */
+.ptr-indicator {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 0;
+  overflow: hidden;
+  transition: height 0.2s ease;
+  z-index: 10;
+  pointer-events: none;
+}
+.ptr-indicator.ptr-pulling {
+  /* height set inline by JS */
+}
+.ptr-indicator.ptr-ready {
+  /* threshold crossed */
+}
+.ptr-indicator.ptr-refreshing {
+  height: 52px;
+}
+
+.ptr-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.ptr-pulling .ptr-inner,
+.ptr-ready .ptr-inner,
+.ptr-refreshing .ptr-inner { opacity: 1; }
+
+.ptr-arrow {
+  width: 20px; height: 20px;
+  transition: transform 0.2s;
+  color: var(--accent);
+}
+.ptr-ready .ptr-arrow { transform: rotate(180deg); }
+
+.ptr-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  display: none;
+}
+.ptr-refreshing .ptr-arrow  { display: none; }
+.ptr-refreshing .ptr-spinner { display: block; }
 
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

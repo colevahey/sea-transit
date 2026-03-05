@@ -93,6 +93,8 @@ function stopIcon(routeIds) {
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
+const REFRESH_INTERVAL = 30; // seconds
+
 const state = {
   currentView: 'nearby',
   userLat: null,
@@ -104,6 +106,8 @@ const state = {
   watchId: null,
   lastArrivalsUpdate: 0,
   tickTimer: null,
+  countdownSecs: REFRESH_INTERVAL,
+  countdownTimer: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -298,18 +302,35 @@ function renderStopCard(stop, userLat, userLon) {
 function clearArrivalTimers() {
   clearInterval(state.arrivalTimer);
   clearInterval(state.tickTimer);
+  clearInterval(state.countdownTimer);
 }
 
 function tickArrivals() {
   if (!state.arrivals.length) return;
   const list = document.getElementById('arrivals-list');
   if (list) list.innerHTML = state.arrivals.map(renderArrivalRow).join('');
-  const el = document.getElementById('arrivals-updated');
-  if (!el || !state.lastArrivalsUpdate) return;
-  const secs = Math.floor((Date.now() - state.lastArrivalsUpdate) / 1000);
-  if (secs < 15)       el.textContent = 'Updated just now';
-  else if (secs < 60)  el.textContent = `Updated ${secs}s ago`;
-  else                 el.textContent = `Updated ${Math.floor(secs / 60)}m ago`;
+}
+
+function startCountdown() {
+  clearInterval(state.countdownTimer);
+  state.countdownSecs = REFRESH_INTERVAL;
+  updateCountdownUI();
+
+  state.countdownTimer = setInterval(() => {
+    state.countdownSecs--;
+    updateCountdownUI();
+    if (state.countdownSecs <= 0) {
+      clearInterval(state.countdownTimer);
+      refreshArrivals().then(startCountdown);
+    }
+  }, 1000);
+}
+
+function updateCountdownUI() {
+  const el = document.getElementById('refresh-countdown');
+  if (!el) return;
+  const s = state.countdownSecs;
+  el.textContent = s > 0 ? `${s}s` : '…';
 }
 
 async function openStop(stopId) {
@@ -321,8 +342,8 @@ async function openStop(stopId) {
   showDetailView();
   updateFavBtn();
   await refreshArrivals();
+  startCountdown();
 
-  state.arrivalTimer = setInterval(refreshArrivals, 30000);
   state.tickTimer = setInterval(tickArrivals, 15000);
 }
 
@@ -574,18 +595,84 @@ function renderLoading(msg = 'Loading…') {
   return `<div class="state-box"><div class="spinner"></div><p>${msg}</p></div>`;
 }
 
+// ─── Pull-to-refresh ─────────────────────────────────────────────────────────
+function initPullToRefresh() {
+  const content = document.querySelector('.content');
+  const indicator = document.getElementById('ptr-indicator');
+  const label = indicator.querySelector('.ptr-label');
+  const PTR_THRESHOLD = 72; // px to trigger refresh
+  let startY = 0;
+  let pulling = false;
+  let refreshing = false;
+
+  content.addEventListener('touchstart', (e) => {
+    if (refreshing) return;
+    if (content.scrollTop > 0) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+  }, { passive: true });
+
+  content.addEventListener('touchmove', (e) => {
+    if (!pulling || refreshing) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { pulling = false; return; }
+
+    const progress = Math.min(dy, PTR_THRESHOLD * 1.5);
+    const height = Math.min(progress * 0.6, 56);
+    indicator.style.height = `${height}px`;
+    indicator.classList.add('ptr-pulling');
+    indicator.classList.toggle('ptr-ready', dy >= PTR_THRESHOLD);
+    label.textContent = dy >= PTR_THRESHOLD ? 'Release to refresh' : 'Pull to refresh';
+  }, { passive: true });
+
+  async function finishPull(dy) {
+    if (!pulling) return;
+    pulling = false;
+    const triggered = dy >= PTR_THRESHOLD;
+    if (!triggered || state.currentView !== 'detail') {
+      indicator.style.height = '';
+      indicator.classList.remove('ptr-pulling', 'ptr-ready');
+      return;
+    }
+    refreshing = true;
+    indicator.classList.remove('ptr-pulling', 'ptr-ready');
+    indicator.classList.add('ptr-refreshing');
+    clearInterval(state.countdownTimer);
+    await refreshArrivals();
+    refreshing = false;
+    indicator.classList.remove('ptr-refreshing');
+    indicator.style.height = '';
+    startCountdown();
+  }
+
+  content.addEventListener('touchend', (e) => {
+    const dy = e.changedTouches[0].clientY - startY;
+    finishPull(dy);
+  }, { passive: true });
+
+  content.addEventListener('touchcancel', () => {
+    pulling = false;
+    indicator.style.height = '';
+    indicator.classList.remove('ptr-pulling', 'ptr-ready', 'ptr-refreshing');
+  }, { passive: true });
+}
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
 
-  // Real viewport height for iOS standalone PWA (Task G)
+  // Real viewport height for iOS standalone PWA
+  // Defer so the browser has settled layout (critical for home-screen mode)
   function setRealVH() {
-    document.documentElement.style.setProperty('--real-vh', `${window.innerHeight}px`);
+    requestAnimationFrame(() => {
+      document.documentElement.style.setProperty('--real-vh', `${window.innerHeight}px`);
+    });
   }
   setRealVH();
   window.addEventListener('resize', setRealVH);
+  window.addEventListener('orientationchange', () => setTimeout(setRealVH, 100));
 
   // Watch position for real-time distance updates (Task C)
   if (navigator.geolocation) {
@@ -628,6 +715,17 @@ document.addEventListener('DOMContentLoaded', () => {
     showView('nearby');
   });
 
+  // Manual refresh button
+  document.getElementById('btn-refresh-now').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-refresh-now');
+    if (btn.classList.contains('spinning')) return;
+    clearInterval(state.countdownTimer);
+    btn.classList.add('spinning');
+    await refreshArrivals();
+    btn.classList.remove('spinning');
+    startCountdown();
+  });
+
   // Search input
   let searchDebounce;
   document.getElementById('stop-search').addEventListener('input', (e) => {
@@ -637,5 +735,6 @@ document.addEventListener('DOMContentLoaded', () => {
     searchDebounce = setTimeout(() => searchStops(q), 350);
   });
 
+  initPullToRefresh();
   showView('nearby');
 });

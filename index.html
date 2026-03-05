@@ -47,6 +47,16 @@
 
     <!-- ── Main content ──────────────────────────────────────────────────── -->
     <main class="content">
+      <!-- Pull-to-refresh indicator -->
+      <div class="ptr-indicator" id="ptr-indicator">
+        <div class="ptr-inner">
+          <svg class="ptr-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+          </svg>
+          <div class="ptr-spinner"></div>
+          <span class="ptr-label">Pull to refresh</span>
+        </div>
+      </div>
 
       <!-- Nearby stops view -->
       <div id="view-nearby" class="view active">
@@ -77,7 +87,15 @@
         </div>
         <div class="arrivals-section-header">
           <p class="section-label">Arrivals</p>
-          <span class="arrivals-updated" id="arrivals-updated"></span>
+          <div class="refresh-bar" id="refresh-bar">
+            <span class="refresh-countdown" id="refresh-countdown"></span>
+            <button class="refresh-now-btn" id="btn-refresh-now" aria-label="Refresh now">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="card-list">
           <div class="glass-card" id="arrivals-list">
