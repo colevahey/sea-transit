@@ -51,18 +51,19 @@
       </div>
     </div>
 
+    <!-- ── Pull-to-refresh indicator (outside .content so it pushes, not overlays) -->
+    <div class="ptr-indicator" id="ptr-indicator">
+      <div class="ptr-inner">
+        <svg class="ptr-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+        </svg>
+        <div class="ptr-spinner"></div>
+        <span class="ptr-label">Pull to refresh</span>
+      </div>
+    </div>
+
     <!-- ── Main content ──────────────────────────────────────────────────── -->
     <main class="content">
-      <!-- Pull-to-refresh indicator -->
-      <div class="ptr-indicator" id="ptr-indicator">
-        <div class="ptr-inner">
-          <svg class="ptr-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
-          </svg>
-          <div class="ptr-spinner"></div>
-          <span class="ptr-label">Pull to refresh</span>
-        </div>
-      </div>
 
       <!-- Nearby stops view -->
       <div id="view-nearby" class="view active">

@@ -389,6 +389,7 @@ function showDetailView() {
   document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
   document.getElementById('view-detail').classList.add('active');
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+  state.currentView = 'detail';
 
   // Ensure content area is visible (detail view lives inside it)
   document.querySelector('.content').classList.remove('hidden');
