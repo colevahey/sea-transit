@@ -580,7 +580,7 @@ body.light-mode .nav-bar {
 
 /* ─── Pull-to-refresh indicator ──────────────────────────────────────────────── */
 .ptr-indicator {
-  flex-shrink: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
