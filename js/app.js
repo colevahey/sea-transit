@@ -534,17 +534,39 @@ function routeTypeLabel(type) {
 }
 
 function renderRouteCard(route) {
-  const typeClass = routeTypeLabel(route.type);
-  const shortName = route.shortName || route.longName || '?';
-  const longName  = route.longName || '';
-  const typeLabel = typeClass.charAt(0).toUpperCase() + typeClass.slice(1);
+  const typeClass = route.typeClass || 'bus';
+  const now = Date.now();
+
+  // Up to 2 distinct headsigns with their next arrival time
+  const seen = new Set();
+  const rows = [];
+  for (const a of route.arrivals) {
+    const h = a.tripHeadsign || 'Unknown';
+    if (seen.has(h)) continue;
+    seen.add(h);
+    const t = a.predictedArrivalTime || a.scheduledArrivalTime;
+    const mins = Math.round((t - now) / 60000);
+    rows.push({ headsign: h, display: mins <= 0 ? 'Now' : `${mins} min` });
+    if (rows.length >= 2) break;
+  }
+
+  const headsignHtml = rows.map(r => `
+      <div class="route-card-headsign">
+        <span class="route-card-dest">${r.headsign}</span>
+        <span class="route-card-time">${r.display}</span>
+      </div>`).join('');
+
+  const distStr = route.nearestStopDist < Infinity ? formatDist(route.nearestStopDist) : '';
+  const stopHtml = route.nearestStopName
+    ? `<div class="route-card-stop">${route.nearestStopName}${distStr ? ' · ' + distStr : ''}</div>`
+    : '';
+
   return `
-    <div class="glass-card route-card" data-route-id="${route.id}"
-         data-route-short="${shortName}" data-route-long="${longName}" data-route-type="${typeClass}">
-      <div class="route-card-badge route-type-${typeClass}">${shortName}</div>
+    <div class="glass-card route-card" data-route-short="${route.shortName}" data-route-type="${typeClass}">
+      <div class="route-badge route-type-${typeClass}">${route.shortName}</div>
       <div class="route-card-info">
-        <div class="route-card-name">${longName || shortName}</div>
-        <div class="route-card-type">${typeLabel}</div>
+        ${headsignHtml}
+        ${stopHtml}
       </div>
       <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
         <path d="M1 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -555,34 +577,84 @@ function renderRouteCard(route) {
 async function loadNearbyRoutes() {
   const list = document.getElementById('routes-list');
   if (!list) return;
-
-  // Use cached routes if available
-  if (state.routes && state.routes.length > 0) {
-    list.innerHTML = state.routes.map(renderRouteCard).join('');
-    list.querySelectorAll('.route-card').forEach(el => {
-      el.addEventListener('click', () => openRoute(el));
-    });
-    return;
-  }
-
   list.innerHTML = renderLoading('Loading routes…');
 
   try {
-    const lat = state.userLat || 47.6062;
-    const lon = state.userLon || -122.3321;
+    // Ensure we have nearby stops to work from
+    if (state.stops.length === 0) {
+      try {
+        const { lat, lon } = await getUserLocation();
+        state.userLat = lat; state.userLon = lon;
+        const data = await apiFetch('stops-for-location', { lat, lon, radius: 500, maxCount: 20 });
+        state.stops = (data.list || []).sort((a, b) =>
+          haversineM(lat, lon, a.lat, a.lon) - haversineM(lat, lon, b.lat, b.lon)
+        );
+      } catch {
+        list.innerHTML = stateBox('locationOff', 'Location needed to find nearby routes.');
+        return;
+      }
+    }
 
-    const data = await apiFetch('routes-for-location', { lat, lon, radius: 1000 });
-    const routes = data.list || [];
+    const stops = state.stops.slice(0, 8);
 
-    if (routes.length === 0) {
-      list.innerHTML = stateBox('search', 'No routes found nearby.');
+    // Fetch arrivals for all nearby stops in parallel
+    const results = await Promise.allSettled(
+      stops.map(s => apiFetch(`arrivals-and-departures-for-stop/${s.id}`, {
+        minutesBefore: 0, minutesAfter: 45,
+      }))
+    );
+
+    // Group arrivals by routeShortName
+    const routeMap = new Map();
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled') return;
+      const stop = stops[i];
+      const dist = (state.userLat && stop.lat)
+        ? haversineM(state.userLat, state.userLon, stop.lat, stop.lon)
+        : Infinity;
+      const rows = r.value.entry?.arrivalsAndDepartures || [];
+
+      rows.forEach(a => {
+        const key = a.routeShortName || '?';
+        if (!routeMap.has(key)) {
+          const rid = (a.routeId || '').toLowerCase();
+          const typeClass = (rid.includes('link') || rid.includes('st_')) ? 'rail'
+                          : rid.includes('ferry') ? 'ferry' : 'bus';
+          routeMap.set(key, {
+            shortName: key,
+            typeClass,
+            arrivals: [],
+            nearestStopDist: dist,
+            nearestStopName: stop.name,
+          });
+        }
+        const entry = routeMap.get(key);
+        entry.arrivals.push(a);
+        if (dist < entry.nearestStopDist) {
+          entry.nearestStopDist = dist;
+          entry.nearestStopName = stop.name;
+        }
+      });
+    });
+
+    if (routeMap.size === 0) {
+      list.innerHTML = stateBox('clock', 'No arrivals found nearby.');
       return;
     }
 
-    routes.sort((a, b) => {
-      if (a.type !== b.type) return a.type - b.type;
-      return (a.shortName || '').localeCompare(b.shortName || '', undefined, { numeric: true });
+    const routes = [...routeMap.values()];
+    routes.forEach(r => {
+      r.arrivals.sort((a, b) =>
+        (a.predictedArrivalTime || a.scheduledArrivalTime) -
+        (b.predictedArrivalTime || b.scheduledArrivalTime)
+      );
+      const first = r.arrivals[0];
+      r.nextTime = first ? (first.predictedArrivalTime || first.scheduledArrivalTime) : Infinity;
+      r.headsigns = [...new Set(r.arrivals.map(a => a.tripHeadsign).filter(Boolean))].slice(0, 2);
     });
+
+    // Sort by next arrival (closest first)
+    routes.sort((a, b) => a.nextTime - b.nextTime);
 
     state.routes = routes;
     list.innerHTML = routes.map(renderRouteCard).join('');
@@ -595,23 +667,29 @@ async function loadNearbyRoutes() {
 }
 
 async function openRoute(cardEl) {
-  const routeId   = cardEl.dataset.routeId;
   const shortName = cardEl.dataset.routeShort;
-  const longName  = cardEl.dataset.routeLong;
-  const typeClass = cardEl.dataset.routeType;
+  const routeData = state.routes?.find(r => r.shortName === shortName);
 
-  // Update detail header
-  const badge = document.getElementById('route-detail-badge');
-  const namEl = document.getElementById('route-detail-name');
-  if (badge) { badge.textContent = shortName; badge.className = `route-badge route-type-${typeClass}`; }
-  if (namEl) namEl.textContent = longName || shortName;
+  // Header: "5 · Capitol Hill / Northgate"
+  const titleEl = document.getElementById('route-detail-title');
+  if (titleEl) {
+    const headsignsStr = routeData?.headsigns?.join(' / ') || '';
+    titleEl.textContent = headsignsStr ? `${shortName} · ${headsignsStr}` : `Route ${shortName}`;
+  }
 
   // Show route detail view
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-route-detail').classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
-  await loadRouteArrivals(shortName);
+  // Render from cached arrivals — no extra API call
+  const list = document.getElementById('route-arrivals-list');
+  if (!list) return;
+  if (routeData?.arrivals?.length) {
+    list.innerHTML = routeData.arrivals.slice(0, 15).map(renderArrivalRow).join('');
+  } else {
+    await loadRouteArrivals(shortName);
+  }
 }
 
 async function loadRouteArrivals(routeShortName) {
