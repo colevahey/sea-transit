@@ -252,7 +252,7 @@ body.light-mode::after {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  padding-bottom: calc(var(--nav-height) + max(var(--safe-bottom), env(safe-area-inset-bottom, 20px)) + 16px);
+  padding-bottom: calc(var(--nav-height) + 16px);
   position: relative;
 }
 .content::-webkit-scrollbar { display: none; }
@@ -384,8 +384,7 @@ body.light-mode::after {
 .nav-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  /* Fill the full bottom including home indicator */
-  padding-bottom: max(var(--safe-bottom), env(safe-area-inset-bottom, 20px));
+  padding-bottom: 8px;
   background: rgba(8, 12, 10, 0.85);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
@@ -708,7 +707,7 @@ body.light-mode .nav-bar {
 /* ─── Map container ──────────────────────────────────────────────────────────── */
 #map-container {
   flex: 1;
-  padding: 4px 16px calc(var(--nav-height) + max(var(--safe-bottom), env(safe-area-inset-bottom, 20px)) + 8px);
+  padding: 4px 16px calc(var(--nav-height) + 8px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -718,7 +717,7 @@ body.light-mode .nav-bar {
 /* ─── Map stop sheet ────────────────────────────────────────────────────────── */
 .map-stop-sheet {
   position: absolute;
-  bottom: calc(var(--nav-height) + max(var(--safe-bottom), env(safe-area-inset-bottom, 20px)) + 24px);
+  bottom: calc(var(--nav-height) + 24px);
   left: 32px; right: 32px;
   background: var(--glass-bg-raised);
   -webkit-backdrop-filter: var(--glass-blur);

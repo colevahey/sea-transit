@@ -1027,7 +1027,8 @@ function initPullToRefresh() {
     if (!pulling) return;
     pulling = false;
     const triggered = dy >= PTR_THRESHOLD;
-    if (!triggered || state.currentView !== 'detail') {
+    const refreshableView = state.currentView === 'detail' || state.currentView === 'nearby' || state.currentView === 'lines';
+    if (!triggered || !refreshableView) {
       indicator.style.height = '';
       indicator.classList.remove('ptr-pulling', 'ptr-ready');
       return;
@@ -1035,12 +1036,18 @@ function initPullToRefresh() {
     refreshing = true;
     indicator.classList.remove('ptr-pulling', 'ptr-ready');
     indicator.classList.add('ptr-refreshing');
-    clearInterval(state.countdownTimer);
-    await refreshArrivals();
+    if (state.currentView === 'detail') {
+      clearInterval(state.countdownTimer);
+      await refreshArrivals();
+      startCountdown();
+    } else if (state.currentView === 'nearby') {
+      await loadNearbyStops();
+    } else if (state.currentView === 'lines') {
+      await loadNearbyRoutes();
+    }
     refreshing = false;
     indicator.classList.remove('ptr-refreshing');
     indicator.style.height = '';
-    startCountdown();
   }
 
   content.addEventListener('touchend', (e) => {
