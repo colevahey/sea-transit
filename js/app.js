@@ -126,6 +126,7 @@ const state = {
   leafletTileLayer: null,
   leafletUserMarker: null,
   leafletStopMarkers: [],
+  mapSelectedStop: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -940,9 +941,29 @@ function updateMapMarkers() {
     });
     const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon }).addTo(state.leafletMap);
     marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
-    marker.on('click', () => openStop(stop.id));
+    marker.on('click', () => showMapStopSheet(stop));
     state.leafletStopMarkers.push(marker);
   });
+}
+
+function showMapStopSheet(stop) {
+  state.mapSelectedStop = stop;
+  const sheet = document.getElementById('map-stop-sheet');
+  sheet.querySelector('.map-stop-sheet-name').textContent = stop.name;
+  const dist = (state.userLat && stop.lat)
+    ? formatDist(haversineM(state.userLat, state.userLon, stop.lat, stop.lon))
+    : '';
+  const meta = [stop.code ? `Stop #${stop.code}` : null, dist].filter(Boolean).join(' · ');
+  sheet.querySelector('.map-stop-sheet-meta').textContent = meta;
+  const favBtn = document.getElementById('map-sheet-fav-btn');
+  const fav = isFavorite(stop.id);
+  favBtn.innerHTML = fav ? icon('starFilled') : icon('star');
+  favBtn.classList.toggle('is-favorite', fav);
+  sheet.classList.add('visible');
+}
+
+function hideMapStopSheet() {
+  document.getElementById('map-stop-sheet').classList.remove('visible');
 }
 
 function swapMapTiles() {
@@ -1094,6 +1115,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!state.selectedStop) return;
     toggleFavorite(state.selectedStop);
     updateFavBtn();
+  });
+
+  // Map stop sheet buttons
+  document.getElementById('map-sheet-fav-btn').addEventListener('click', () => {
+    if (!state.mapSelectedStop) return;
+    toggleFavorite(state.mapSelectedStop);
+    const fav = isFavorite(state.mapSelectedStop.id);
+    const btn = document.getElementById('map-sheet-fav-btn');
+    btn.innerHTML = fav ? icon('starFilled') : icon('star');
+    btn.classList.toggle('is-favorite', fav);
+  });
+
+  document.getElementById('map-sheet-arrivals-btn').addEventListener('click', () => {
+    const stop = state.mapSelectedStop;
+    hideMapStopSheet();
+    if (stop) openStop(stop.id);
+  });
+
+  document.getElementById('stops-map').addEventListener('click', () => {
+    hideMapStopSheet();
   });
 
   // Back button (stop detail → nearby)

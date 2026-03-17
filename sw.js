@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sea-transit-v1';
+const CACHE_NAME = 'sea-transit-v2';
 const PRECACHE = ['/icons/icon-192.png', '/icons/icon-512.png', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
