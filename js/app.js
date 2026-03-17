@@ -104,6 +104,13 @@ function stopIcon(routeIds) {
   return icon('bus');
 }
 
+function firstRouteShortLabel(routeIds) {
+  if (!routeIds || routeIds.length === 0) return null;
+  const id = routeIds[0];
+  const label = id.includes('_') ? id.split('_').pop() : id;
+  return label && label.length <= 4 ? label : null;
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const REFRESH_INTERVAL = 30; // seconds
 
@@ -237,6 +244,16 @@ function showView(name) {
     if (mapContainer) mapContainer.classList.add('hidden');
   }
 
+  // Show/hide search bar depending on view
+  const searchWrap = document.querySelector('.search-wrap');
+  const searchInput = document.getElementById('stop-search');
+  const searchViews = ['nearby', 'lines'];
+  if (searchWrap) searchWrap.classList.toggle('hidden', !searchViews.includes(name));
+  if (searchInput) {
+    searchInput.value = '';
+    searchInput.placeholder = name === 'lines' ? 'Search routes…' : 'Search stops…';
+  }
+
   if (name === 'nearby')   { renderFavPanels(); loadNearbyStops(); }
   if (name === 'lines')    { state.routes = null; loadNearbyRoutes(); }
   if (name === 'settings') renderFavoritesSettings();
@@ -323,9 +340,10 @@ function renderStopCard(stop, userLat, userLon) {
   const distStr = dist !== null ? formatDist(dist) : '';
   const favMark = isFavorite(stop.id) ? '<span class="stop-fav-mark">★</span>' : '';
 
+  const badge = firstRouteShortLabel(stop.routeIds);
   return `
     <div class="glass-card stop-card" data-stop-id="${stop.id}">
-      <div class="stop-icon">${stopIcon(stop.routeIds)}</div>
+      <div class="stop-icon">${stopIcon(stop.routeIds)}${badge ? `<span class="stop-icon-badge">${badge}</span>` : ''}</div>
       <div class="stop-info">
         <div class="stop-name">${stop.name}${favMark}</div>
         <div class="stop-meta">Stop #${stop.code || stop.id}${stop.direction ? ' · ' + stop.direction : ''}</div>
@@ -391,6 +409,7 @@ function showDetailView() {
   document.getElementById('view-detail').classList.add('active');
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
   state.currentView = 'detail';
+  document.querySelector('.search-wrap')?.classList.add('hidden');
 
   // Ensure content area is visible (detail view lives inside it)
   document.querySelector('.content').classList.remove('hidden');
@@ -527,6 +546,44 @@ async function searchStops(query) {
   }
 }
 
+async function searchRoutes(query) {
+  if (query.length < 2) return;
+  const list = document.getElementById('routes-list');
+  list.innerHTML = renderLoading('Searching routes…');
+
+  try {
+    const data = await apiFetch('routes-for-location', {
+      lat: state.userLat || 47.6062,
+      lon: state.userLon || -122.3321,
+      query,
+      radius: 10000,
+    });
+
+    const routeRefs = data.list || [];
+    if (routeRefs.length === 0) {
+      list.innerHTML = stateBox('search', `No routes found for "${query}".`);
+      return;
+    }
+
+    const routes = routeRefs.map(r => ({
+      shortName: r.shortName || r.id,
+      typeClass: routeTypeLabel(r.type || 3),
+      arrivals: [],
+      headsigns: [],
+      nearestStopDist: Infinity,
+      nearestStopName: r.longName || '',
+      singleDirection: false,
+    }));
+
+    list.innerHTML = routes.map(renderRouteCard).join('');
+    list.querySelectorAll('.route-card').forEach(el => {
+      el.addEventListener('click', () => openRoute(el));
+    });
+  } catch (err) {
+    list.innerHTML = stateBox('warning', err.message);
+  }
+}
+
 // ─── Lines (by-route) view ────────────────────────────────────────────────────
 function routeTypeLabel(type) {
   if (type === 3) return 'bus';
@@ -539,7 +596,7 @@ function renderRouteCard(route) {
   const typeClass = route.typeClass || 'bus';
   const now = Date.now();
 
-  // Up to 2 distinct headsigns with their next arrival time
+  // Distinct headsigns with their next arrival time
   const seen = new Set();
   const rows = [];
   for (const a of route.arrivals) {
@@ -549,7 +606,6 @@ function renderRouteCard(route) {
     const t = a.predictedArrivalTime || a.scheduledArrivalTime;
     const mins = Math.round((t - now) / 60000);
     rows.push({ headsign: h, display: mins <= 0 ? 'Now' : `${mins} min` });
-    if (rows.length >= 2) break;
   }
 
   const headsignHtml = rows.map(r => `
@@ -562,12 +618,16 @@ function renderRouteCard(route) {
   const stopHtml = route.nearestStopName
     ? `<div class="route-card-stop">${route.nearestStopName}${distStr ? ' · ' + distStr : ''}</div>`
     : '';
+  const oneDirHtml = route.singleDirection
+    ? `<div class="route-card-one-dir">↑ 1 direction found nearby</div>`
+    : '';
 
   return `
     <div class="glass-card route-card" data-route-short="${route.shortName}" data-route-type="${typeClass}">
       <div class="route-badge route-type-${typeClass}">${route.shortName}</div>
       <div class="route-card-info">
         ${headsignHtml}
+        ${oneDirHtml}
         ${stopHtml}
       </div>
       <svg class="chevron" width="8" height="14" viewBox="0 0 8 14" fill="none">
@@ -652,7 +712,8 @@ async function loadNearbyRoutes() {
       );
       const first = r.arrivals[0];
       r.nextTime = first ? (first.predictedArrivalTime || first.scheduledArrivalTime) : Infinity;
-      r.headsigns = [...new Set(r.arrivals.map(a => a.tripHeadsign).filter(Boolean))].slice(0, 2);
+      r.headsigns = [...new Set(r.arrivals.map(a => a.tripHeadsign).filter(Boolean))];
+      r.singleDirection = r.headsigns.length === 1;
     });
 
     // Sort by next arrival (closest first)
@@ -683,6 +744,7 @@ async function openRoute(cardEl) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-route-detail').classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector('.search-wrap')?.classList.add('hidden');
 
   // Render from cached arrivals — no extra API call
   const list = document.getElementById('route-arrivals-list');
@@ -905,6 +967,7 @@ function initMap() {
   }).addTo(map);
 
   state.leafletMap = map;
+  map.on('click', () => hideMapStopSheet());
   updateMapMarkers();
 }
 
@@ -1006,6 +1069,7 @@ function initPullToRefresh() {
   content.addEventListener('touchstart', (e) => {
     if (refreshing) return;
     if (content.scrollTop > 0) return;
+    if (state.currentView === 'settings') return;
     startY = e.touches[0].clientY;
     pulling = true;
   }, { passive: true });
@@ -1097,16 +1161,20 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme(savedTheme === 'light');
 
   // Theme toggle (also swaps map tiles)
-  document.getElementById('btn-theme').addEventListener('click', () => {
+  document.getElementById('btn-theme').addEventListener('click', (e) => {
     toggleTheme();
     swapMapTiles();
+    e.currentTarget.blur();
   });
 
   // Map toggle button
   const mapToggleBtn = document.getElementById('btn-map-toggle');
   if (mapToggleBtn) {
     mapToggleBtn.innerHTML = icon('map');
-    mapToggleBtn.addEventListener('click', toggleMapView);
+    mapToggleBtn.addEventListener('click', (e) => {
+      toggleMapView();
+      e.currentTarget.blur();
+    });
   }
 
   // Nav bar
@@ -1140,10 +1208,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (stop) openStop(stop.id);
   });
 
-  document.getElementById('stops-map').addEventListener('click', () => {
-    hideMapStopSheet();
-  });
-
   // Back button (stop detail → nearby)
   document.getElementById('btn-back').addEventListener('click', () => {
     clearArrivalTimers();
@@ -1171,8 +1235,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('stop-search').addEventListener('input', (e) => {
     clearTimeout(searchDebounce);
     const q = e.target.value.trim();
-    if (q === '') { loadNearbyStops(); return; }
-    searchDebounce = setTimeout(() => searchStops(q), 350);
+    if (state.currentView === 'lines') {
+      if (q === '') { loadNearbyRoutes(); return; }
+      searchDebounce = setTimeout(() => searchRoutes(q), 350);
+    } else {
+      if (q === '') { loadNearbyStops(); return; }
+      searchDebounce = setTimeout(() => searchStops(q), 350);
+    }
   });
 
   initPullToRefresh();
