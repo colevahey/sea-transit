@@ -134,6 +134,7 @@ const state = {
   leafletUserMarker: null,
   leafletStopMarkers: [],
   mapSelectedStop: null,
+  mapLoadCenter: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -942,6 +943,27 @@ function renderLoading(msg = 'Loading…') {
 }
 
 // ─── Map view ─────────────────────────────────────────────────────────────────
+async function loadStopsForMapCenter() {
+  if (!state.leafletMap) return;
+  const c = state.leafletMap.getCenter();
+  try {
+    const data = await apiFetch('stops-for-location', {
+      lat: c.lat, lon: c.lng, radius: 600, maxCount: 25,
+    });
+    const newStops = data.list || [];
+    const existingIds = new Set(state.stops.map(s => s.id));
+    newStops.forEach(s => {
+      if (!existingIds.has(s.id)) {
+        state.stops.push(s);
+      } else {
+        const idx = state.stops.findIndex(x => x.id === s.id);
+        if (idx >= 0) state.stops[idx] = s;
+      }
+    });
+    updateMapMarkers();
+  } catch {}
+}
+
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTR  = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>';
@@ -968,6 +990,15 @@ function initMap() {
 
   state.leafletMap = map;
   map.on('click', () => hideMapStopSheet());
+  map.on('moveend', () => {
+    const c = map.getCenter();
+    if (state.mapLoadCenter) {
+      const dist = haversineM(state.mapLoadCenter.lat, state.mapLoadCenter.lon, c.lat, c.lng);
+      if (dist < 250) return;
+    }
+    state.mapLoadCenter = { lat: c.lat, lon: c.lng };
+    loadStopsForMapCenter();
+  });
   updateMapMarkers();
 }
 
@@ -1105,6 +1136,7 @@ function initPullToRefresh() {
       await refreshArrivals();
       startCountdown();
     } else if (state.currentView === 'nearby') {
+      renderFavPanels(); // no await — skeleton shows synchronously
       await loadNearbyStops();
     } else if (state.currentView === 'lines') {
       await loadNearbyRoutes();
@@ -1132,15 +1164,17 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
 
-  // Real viewport height for iOS standalone PWA
-  // Defer so the browser has settled layout (critical for home-screen mode)
+  // Real viewport height for iOS — use visualViewport when available so the
+  // bottom Safari toolbar is excluded from the measurement in browser mode.
   function setRealVH() {
     requestAnimationFrame(() => {
-      document.documentElement.style.setProperty('--real-vh', `${window.innerHeight}px`);
+      const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--real-vh', `${h}px`);
     });
   }
   setRealVH();
   window.addEventListener('resize', setRealVH);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', setRealVH);
   window.addEventListener('orientationchange', () => setTimeout(setRealVH, 100));
 
   // Watch position for real-time distance updates (Task C)
