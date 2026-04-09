@@ -1164,30 +1164,6 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
 
-  // Real viewport height for iOS browser mode — tracks visualViewport so #app resizes
-  // correctly as the Safari bottom toolbar shows/hides during scroll. In standalone
-  // PWA mode there is no browser toolbar, so visualViewport.height can report a
-  // stale/incorrect smaller value (matching browser-mode height), leaving a blank gap
-  // at the bottom. In standalone we remove the override and let 100dvh fill the screen.
-  const isStandalone = () =>
-    window.navigator.standalone === true ||
-    window.matchMedia('(display-mode: standalone)').matches;
-
-  function setRealVH() {
-    requestAnimationFrame(() => {
-      if (isStandalone()) {
-        // No browser chrome — let CSS 100dvh handle the full height.
-        document.documentElement.style.removeProperty('--real-vh');
-        return;
-      }
-      const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      document.documentElement.style.setProperty('--real-vh', `${h}px`);
-    });
-  }
-  setRealVH();
-  window.addEventListener('resize', setRealVH);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', setRealVH);
-  window.addEventListener('orientationchange', () => setTimeout(setRealVH, 150));
 
   // Watch position for real-time distance updates (Task C)
   if (navigator.geolocation) {

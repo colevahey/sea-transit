@@ -51,23 +51,21 @@ html, body {
   overflow: hidden;
 }
 html {
-  height: 100%;
-  height: -webkit-fill-available;
+  height: 100vh;
+  height: 100dvh;
   background: #080c0a;
 }
 html:has(body.light-mode) {
   background: #f0f7f3;
 }
 body {
-  min-height: 100%;
-  min-height: -webkit-fill-available;
-}
-
-body {
+  height: 100vh;
+  height: 100dvh;
   background: linear-gradient(160deg, var(--bg-start) 0%, var(--bg-end) 100%);
   color: var(--text-primary);
   position: relative;
   transition: background 0.3s, color 0.3s;
+  overflow: hidden;
 }
 
 /* ─── Ambient background orbs ──────────────────────────────────────────────── */
@@ -102,13 +100,10 @@ body.light-mode::after {
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
   height: 100dvh;
-  height: var(--real-vh, 100dvh);
   position: relative;
   z-index: 1;
   padding-top: var(--status-height);
-  /* Extend background into the home indicator zone */
   padding-bottom: 0;
 }
 
