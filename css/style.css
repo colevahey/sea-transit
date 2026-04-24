@@ -917,38 +917,46 @@ body.light-mode .stop-map-tooltip {
 /* ─── Vehicle markers on map ───────────────────────────────────────────────── */
 .vehicle-map-marker { background: transparent; border: none; }
 
-.vehicle-marker-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 30px;
-}
-
-.vehicle-marker-arrow {
-  width: 0; height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 8px solid var(--accent);
-  flex-shrink: 0;
+.vehicle-marker-outer {
+  position: relative;
+  width: 30px; height: 30px;
 }
 
 .vehicle-marker-body {
-  width: 30px; height: 30px;
+  position: absolute;
+  inset: 0;
   background: var(--accent);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   color: #000;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+.vehicle-marker-body svg { width: 20px; height: 20px; }
+
+/* Rotating direction indicator — sits on top of body, pivots around center */
+.vehicle-direction-indicator {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+}
+.vehicle-direction-tip {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--accent);
 }
 
-.vehicle-marker-icon svg { width: 20px; height: 20px; }
-
+/* Stale vehicle — greyed out */
 .vehicle-stale .vehicle-marker-body {
   background: rgba(110, 110, 110, 0.6);
   color: rgba(255, 255, 255, 0.55);
   box-shadow: none;
 }
-.vehicle-stale .vehicle-marker-arrow {
+.vehicle-stale .vehicle-direction-tip {
   border-bottom-color: rgba(110, 110, 110, 0.6);
 }
 

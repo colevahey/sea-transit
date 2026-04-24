@@ -19,6 +19,11 @@ const ICONS = {
     <circle cx="17.5" cy="20.5" r="0.65" fill="currentColor" stroke="none"/>
   </svg>`,
 
+  // Material Design "directions_bus" icon (Apache 2.0) — used for map vehicle markers
+  busMarker: `<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+  </svg>`,
+
   rail: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <rect x="4" y="2" width="16" height="14" rx="2"/>
     <path d="M4 8h16M8 2v6M16 2v6"/>
@@ -1103,31 +1108,33 @@ function updateVehicleMarkers() {
   state.vehicles.forEach(vehicle => {
     if (!vehicle.location?.lat || !vehicle.location?.lon) return;
 
-    // Only flag stale if we actually have a non-zero timestamp that's old
+    // Flag stale only if we have a real non-zero timestamp that's over 3 minutes old.
+    // Transit GPS typically updates every 30–90s; 3 min signals a genuine outage.
     const lastLocTime = vehicle.lastLocationUpdateTime || vehicle.lastUpdateTime || 0;
-    const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 60_000);
+    const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 180_000);
 
     const orientation = vehicle.tripStatus?.orientation ?? 0;
     const routeLabel = vehicle.resolvedRouteShortName || '?';
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
+    // Bus icon stays upright; only the direction indicator rotates around it.
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
       html: `
-        <div class="vehicle-marker-wrap" style="transform: rotate(${orientation}deg)">
-          <div class="vehicle-marker-arrow"></div>
-          <div class="vehicle-marker-body">
-            <div class="vehicle-marker-icon" style="transform: rotate(${-orientation}deg)">${icon('bus')}</div>
+        <div class="vehicle-marker-outer">
+          <div class="vehicle-marker-body">${icon('busMarker')}</div>
+          <div class="vehicle-direction-indicator" style="transform: rotate(${orientation}deg)">
+            <div class="vehicle-direction-tip"></div>
           </div>
         </div>`,
-      iconSize: [30, 38],
-      iconAnchor: [15, 38],
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
       .addTo(state.leafletMap);
-    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -46], className: 'stop-map-tooltip' });
+    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -23], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     state.leafletVehicleMarkers.push(marker);
   });
