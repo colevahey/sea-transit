@@ -1,75 +1,36 @@
-# Seattle Transit PWA
+# R(SEA)V Transit
 
-A progressive web app for real-time Seattle transit arrivals, built on the [OneBusAway Puget Sound API](https://developer.onebusaway.org/api/where/).
+A progressive web app for real-time Seattle-area transit, built on the [OneBusAway Puget Sound API](https://developer.onebusaway.org/api/where/).
 
 ## Features
 
-- Nearby stops using your current location
-- Real-time arrival predictions with on-time status
-- Stop search by name
-- iOS-style liquid glass UI
-- Installable PWA (works offline for the shell)
+**Nearby**
+- Stops sorted by distance from your current location
+- Favorite stops pinned at the top with live arrival previews
+- Pull-to-refresh, live distance updates as you move
+- Stop search by name or number
 
-## Setup
+**Arrivals**
+- Real-time predictions with on-time / late / early status
+- Scheduled-only badge on arrivals without live GPS tracking
+- Auto-refreshes every 30 seconds
 
-### 1. Get an API key
+**Lines**
+- Nearby routes grouped by line, showing next arrivals per direction
 
-Register at [developer.onebusaway.org](https://developer.onebusaway.org) to get a free API key.
+**Map**
+- Stop markers — tap to see stop info and jump to arrivals
+- Live vehicle markers showing real-time bus positions, updated every 15 seconds
+  - Directional arrow indicates heading
+  - Greyed out if GPS signal is more than 3 minutes stale
+  - Tap a vehicle for route, on-time status, and upcoming stops
+- Dark and light map tiles
 
-### 2. Add your API key
+**General**
+- Liquid glass design system
+- Dark and light themes
+- Installable PWA — add to home screen on iOS or Android
 
-Create `config.js` in the project root and add your key:
+## Contributing
 
-```js
-const CONFIG = {
-  API_KEY: 'your-key-here',
-  BASE_URL: 'https://api.pugetsound.onebusaway.org/api/where',
-};
-```
-
-`config.js` is gitignored so your key stays local.
-
-Alternatively, paste your key in the **Settings** tab of the app — it's saved to `localStorage`.
-
-### 3. Run locally
-
-Any static file server works:
-
-```bash
-npx serve .
-# or
-python3 -m http.server 3000
-```
-
-Then open `http://localhost:3000`.
-
-## Deploy to Netlify
-
-1. Push this repo to GitHub
-2. Connect it in the Netlify dashboard (Build command: *none*, Publish directory: `.`)
-3. Done — `netlify.toml` handles routing
-
-## Project structure
-
-```
-sea-transit/
-├── index.html        # App shell
-├── sw.js             # Service worker (offline support)
-├── manifest.json     # PWA manifest
-├── netlify.toml      # Netlify config
-├── config.js         # API key (gitignored — create locally)
-├── css/
-│   └── style.css     # Liquid glass design system
-├── js/
-│   └── app.js        # App logic + OBA API client
-└── icons/
-    ├── icon-192.png
-    └── icon-512.png
-```
-
-## API
-
-Built on the [OneBusAway REST API](https://developer.onebusaway.org/api/where/) (Puget Sound instance).
-Key endpoints used:
-- `stops-for-location` — nearby stops
-- `arrivals-and-departures-for-stop` — live arrivals
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, API key configuration, and deployment notes.
