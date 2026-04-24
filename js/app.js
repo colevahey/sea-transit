@@ -465,12 +465,14 @@ function renderArrivalRow(arrival) {
   else if (diffMs > 60000)  { statusClass = 'delayed'; statusText = `+${Math.round(diffMs / 60000)} min late`; }
   else if (diffMs < -30000) { statusClass = 'early';   statusText = `${Math.round(-diffMs / 60000)} min early`; }
 
+  const scheduledBadge = !hasPredicted ? '<span class="scheduled-badge">S</span>' : '';
+
   return `
     <div class="arrival-row">
       <div class="route-badge">${arrival.routeShortName || '?'}</div>
       <div class="arrival-info">
         <div class="arrival-headsign">${arrival.tripHeadsign || 'Unknown destination'}</div>
-        <div class="arrival-status ${statusClass}">${statusText}</div>
+        <div class="arrival-status ${statusClass}">${statusText}${scheduledBadge}</div>
       </div>
       <div class="arrival-time">
         <div class="minutes">${displayMins}</div>
@@ -606,14 +608,18 @@ function renderRouteCard(route) {
     seen.add(h);
     const t = a.predictedArrivalTime || a.scheduledArrivalTime;
     const mins = Math.round((t - now) / 60000);
-    rows.push({ headsign: h, display: mins <= 0 ? 'Now' : `${mins} min` });
+    const hasPredicted = !!a.predictedArrivalTime;
+    rows.push({ headsign: h, display: mins <= 0 ? 'Now' : `${mins} min`, hasPredicted });
   }
 
-  const headsignHtml = rows.map(r => `
+  const headsignHtml = rows.map(r => {
+    const badge = !r.hasPredicted ? '<span class="scheduled-badge fav-scheduled-badge">S</span>' : '';
+    return `
       <div class="route-card-headsign">
-        <span class="route-card-dest">${r.headsign}</span>
+        <span class="route-card-dest">${r.headsign}${badge}</span>
         <span class="route-card-time">${r.display}</span>
-      </div>`).join('');
+      </div>`;
+  }).join('');
 
   const distStr = route.nearestStopDist < Infinity ? formatDist(route.nearestStopDist) : '';
   const stopHtml = route.nearestStopName
@@ -814,10 +820,12 @@ function renderFavPanel(fav, arrivals, distStr = '') {
         const minsAway = Math.round((predicted - now) / 60000);
         const displayMins = minsAway <= 0 ? 'Now' : minsAway;
         const minLabel = minsAway <= 0 ? '' : ' min';
+        const hasPredicted = !!a.predictedArrivalTime;
+        const scheduledBadge = !hasPredicted ? '<span class="scheduled-badge fav-scheduled-badge">S</span>' : '';
         return `
           <div class="fav-arrival-row">
             <div class="route-badge">${a.routeShortName || '?'}</div>
-            <div class="fav-arrival-dest">${a.tripHeadsign || 'Unknown'}</div>
+            <div class="fav-arrival-dest">${a.tripHeadsign || 'Unknown'}${scheduledBadge}</div>
             <div class="fav-arrival-time"><span class="minutes">${displayMins}</span><span class="min-label">${minLabel}</span></div>
           </div>`;
       }).join('');

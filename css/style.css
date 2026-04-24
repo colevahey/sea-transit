@@ -376,6 +376,25 @@ body.light-mode::after {
 .arrival-status.delayed { color: #f59e0b; }
 .arrival-status.early   { color: #60a5fa; }
 
+.scheduled-badge {
+  display: inline-block;
+  background: rgba(128, 128, 128, 0.5);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.fav-scheduled-badge {
+  margin-left: 4px;
+  padding: 2px 4px;
+  font-size: 8px;
+}
+
 .arrival-time {
   text-align: right;
   flex-shrink: 0;
