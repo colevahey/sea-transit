@@ -916,32 +916,40 @@ body.light-mode .stop-map-tooltip {
 
 /* ─── Vehicle markers on map ───────────────────────────────────────────────── */
 .vehicle-map-marker { background: transparent; border: none; }
+
+.vehicle-marker-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 30px;
+}
+
+.vehicle-marker-arrow {
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--accent);
+  flex-shrink: 0;
+}
+
 .vehicle-marker-body {
-  width: 28px; height: 28px;
+  width: 30px; height: 30px;
   background: var(--accent);
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   color: #000;
-  position: relative;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
 }
-.vehicle-marker-body svg { width: 16px; height: 16px; }
 
-.vehicle-marker-arrow {
-  position: absolute;
-  top: -6px;
-  width: 0; height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 7px solid var(--accent);
-  transition: transform 0.3s ease;
-}
+.vehicle-marker-icon svg { width: 20px; height: 20px; }
 
 .vehicle-stale .vehicle-marker-body {
-  background: rgba(128, 128, 128, 0.45);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(110, 110, 110, 0.6);
+  color: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
 }
 .vehicle-stale .vehicle-marker-arrow {
-  border-bottom-color: rgba(128, 128, 128, 0.45);
+  border-bottom-color: rgba(110, 110, 110, 0.6);
 }
 
 /* ─── Vehicle bottom sheet ─────────────────────────────────────────────────── */

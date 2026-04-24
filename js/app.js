@@ -982,11 +982,28 @@ async function loadVehiclesForMap() {
       apiFetch('vehicles-for-agency/1'),
       apiFetch('vehicles-for-agency/40'),
     ]);
-    const vehicles = [
-      ...(r1.status === 'fulfilled' ? r1.value.list || [] : []),
-      ...(r40.status === 'fulfilled' ? r40.value.list || [] : []),
-    ].filter(v => v.tripStatus?.phase === 'in_progress' && v.location?.lat);
-    state.vehicles = vehicles;
+
+    const enrichVehicles = (result) => {
+      if (result.status !== 'fulfilled') return [];
+      const data = result.value;
+      const tripMap = {};
+      (data.references?.trips || []).forEach(t => { tripMap[t.id] = t; });
+      const routeMap = {};
+      (data.references?.routes || []).forEach(r => { routeMap[r.id] = r; });
+      return (data.list || [])
+        .filter(v => v.tripStatus?.phase === 'in_progress' && v.location?.lat)
+        .map(v => {
+          const trip = tripMap[v.tripId] || {};
+          const route = routeMap[trip.routeId] || {};
+          return {
+            ...v,
+            resolvedRouteShortName: route.shortName || '?',
+            resolvedHeadsign: trip.tripHeadsign || '?',
+          };
+        });
+    };
+
+    state.vehicles = [...enrichVehicles(r1), ...enrichVehicles(r40)];
     updateVehicleMarkers();
   } catch (err) {
     console.warn('Failed to load vehicles:', err);
@@ -1086,23 +1103,31 @@ function updateVehicleMarkers() {
   state.vehicles.forEach(vehicle => {
     if (!vehicle.location?.lat || !vehicle.location?.lon) return;
 
-    const stale = Date.now() - vehicle.lastLocationUpdateTime > 60_000;
-    const orientation = vehicle.tripStatus?.orientation || 0;
-    const headsign = vehicle.tripStatus?.activeTripId ? `Bus ${vehicle.vehicleId.split('_')[1]}` : 'Bus';
+    // Only flag stale if we actually have a non-zero timestamp that's old
+    const lastLocTime = vehicle.lastLocationUpdateTime || vehicle.lastUpdateTime || 0;
+    const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 60_000);
+
+    const orientation = vehicle.tripStatus?.orientation ?? 0;
+    const routeLabel = vehicle.resolvedRouteShortName || '?';
+    const headsign = vehicle.resolvedHeadsign || '';
+    const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
     const vehicleIcon = L.divIcon({
-      className: `vehicle-map-marker ${stale ? 'vehicle-stale' : ''}`,
+      className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
       html: `
-        <div class="vehicle-marker-body">${icon('bus')}</div>
-        <div class="vehicle-marker-arrow" style="transform: rotate(${orientation}deg);"></div>
-      `,
-      iconSize: [28, 42],
-      iconAnchor: [14, 35],
+        <div class="vehicle-marker-wrap" style="transform: rotate(${orientation}deg)">
+          <div class="vehicle-marker-arrow"></div>
+          <div class="vehicle-marker-body">
+            <div class="vehicle-marker-icon" style="transform: rotate(${-orientation}deg)">${icon('bus')}</div>
+          </div>
+        </div>`,
+      iconSize: [30, 38],
+      iconAnchor: [15, 38],
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
       .addTo(state.leafletMap);
-    marker.bindTooltip(headsign, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
+    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -46], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     state.leafletVehicleMarkers.push(marker);
   });
@@ -1137,11 +1162,11 @@ async function showMapVehicleSheet(vehicle) {
   const headsignEl = document.getElementById('vehicle-sheet-headsign');
   const statusEl = document.getElementById('vehicle-sheet-status');
 
-  const routeShortName = vehicle.routeShortName || '?';
+  const routeShortName = vehicle.resolvedRouteShortName || '?';
   badgeEl.textContent = routeShortName;
   badgeEl.className = 'route-badge route-type-bus';
 
-  const tripHeadsign = vehicle.tripStatus?.tripHeadsign || 'Unknown';
+  const tripHeadsign = vehicle.resolvedHeadsign || 'Unknown destination';
   headsignEl.textContent = tripHeadsign;
 
   const schedDev = vehicle.tripStatus?.scheduleDeviation || 0;
@@ -1162,19 +1187,21 @@ async function showMapVehicleSheet(vehicle) {
       includeStatus: true,
     });
 
-    const stopTimes = tripData.schedule?.stopTimes || [];
-    const references = tripData.references || {};
+    const entry = tripData.entry || {};
+    const stopTimes = entry.schedule?.stopTimes || [];
     const stopMap = {};
-    (references.stops || []).forEach(s => { stopMap[s.id] = s; });
+    (tripData.references?.stops || []).forEach(s => { stopMap[s.id] = s; });
 
-    const serviceDate = tripData.schedule?.serviceDate || tripData.status?.serviceDate || 0;
-    const schedDev = tripData.status?.scheduleDeviation || 0;
+    // serviceDate is epoch ms of midnight; arrivalTime is seconds since midnight
+    // scheduleDeviation is seconds (positive = late), so add it to get estimated arrival
+    const serviceDate = entry.serviceDate || entry.status?.serviceDate || 0;
+    const schedDev = entry.status?.scheduleDeviation || 0;
 
     // Filter to upcoming stops (not yet passed)
     const now = Date.now();
     const upcoming = stopTimes
       .filter(st => {
-        const estArrival = serviceDate + (st.arrivalTime * 1000) - (schedDev * 1000);
+        const estArrival = serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000);
         return estArrival > now;
       })
       .slice(0, 5);
@@ -1184,7 +1211,7 @@ async function showMapVehicleSheet(vehicle) {
     } else {
       stopsEl.innerHTML = upcoming.map(st => {
         const stop = stopMap[st.stopId] || {};
-        const estArrival = new Date(serviceDate + (st.arrivalTime * 1000) - (schedDev * 1000));
+        const estArrival = new Date(serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000));
         const minsAway = Math.round((estArrival - now) / 60000);
         const displayTime = minsAway <= 0 ? 'Now' : `${minsAway} min`;
 
