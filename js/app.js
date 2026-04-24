@@ -135,6 +135,10 @@ const state = {
   leafletStopMarkers: [],
   mapSelectedStop: null,
   mapLoadCenter: null,
+  vehicles: [],
+  leafletVehicleMarkers: [],
+  mapSelectedVehicle: null,
+  vehicleRefreshTimer: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -972,6 +976,23 @@ async function loadStopsForMapCenter() {
   } catch {}
 }
 
+async function loadVehiclesForMap() {
+  try {
+    const [r1, r40] = await Promise.allSettled([
+      apiFetch('vehicles-for-agency/1'),
+      apiFetch('vehicles-for-agency/40'),
+    ]);
+    const vehicles = [
+      ...(r1.status === 'fulfilled' ? r1.value.list || [] : []),
+      ...(r40.status === 'fulfilled' ? r40.value.list || [] : []),
+    ].filter(v => v.tripStatus?.phase === 'in_progress' && v.location?.lat);
+    state.vehicles = vehicles;
+    updateVehicleMarkers();
+  } catch (err) {
+    console.warn('Failed to load vehicles:', err);
+  }
+}
+
 const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTR  = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>';
@@ -997,7 +1018,7 @@ function initMap() {
   }).addTo(map);
 
   state.leafletMap = map;
-  map.on('click', () => hideMapStopSheet());
+  map.on('click', () => { hideMapStopSheet(); hideMapVehicleSheet(); });
   map.on('moveend', () => {
     const c = map.getCenter();
     if (state.mapLoadCenter) {
@@ -1008,6 +1029,10 @@ function initMap() {
     loadStopsForMapCenter();
   });
   updateMapMarkers();
+
+  // Start vehicle polling
+  loadVehiclesForMap();
+  state.vehicleRefreshTimer = setInterval(() => loadVehiclesForMap(), 15000);
 }
 
 function updateMapMarkers() {
@@ -1043,8 +1068,43 @@ function updateMapMarkers() {
     });
     const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon }).addTo(state.leafletMap);
     marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
-    marker.on('click', () => showMapStopSheet(stop));
+    marker.on('click', () => { hideMapVehicleSheet(); showMapStopSheet(stop); });
     state.leafletStopMarkers.push(marker);
+  });
+
+  // Vehicle markers
+  updateVehicleMarkers();
+}
+
+function updateVehicleMarkers() {
+  if (!state.leafletMap) return;
+
+  // Clear existing vehicle markers
+  state.leafletVehicleMarkers.forEach(m => m.remove());
+  state.leafletVehicleMarkers = [];
+
+  state.vehicles.forEach(vehicle => {
+    if (!vehicle.location?.lat || !vehicle.location?.lon) return;
+
+    const stale = Date.now() - vehicle.lastLocationUpdateTime > 60_000;
+    const orientation = vehicle.tripStatus?.orientation || 0;
+    const headsign = vehicle.tripStatus?.activeTripId ? `Bus ${vehicle.vehicleId.split('_')[1]}` : 'Bus';
+
+    const vehicleIcon = L.divIcon({
+      className: `vehicle-map-marker ${stale ? 'vehicle-stale' : ''}`,
+      html: `
+        <div class="vehicle-marker-body">${icon('bus')}</div>
+        <div class="vehicle-marker-arrow" style="transform: rotate(${orientation}deg);"></div>
+      `,
+      iconSize: [28, 42],
+      iconAnchor: [14, 35],
+    });
+
+    const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
+      .addTo(state.leafletMap);
+    marker.bindTooltip(headsign, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
+    marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
+    state.leafletVehicleMarkers.push(marker);
   });
 }
 
@@ -1066,6 +1126,96 @@ function showMapStopSheet(stop) {
 
 function hideMapStopSheet() {
   document.getElementById('map-stop-sheet').classList.remove('visible');
+}
+
+async function showMapVehicleSheet(vehicle) {
+  state.mapSelectedVehicle = vehicle;
+  const sheet = document.getElementById('map-vehicle-sheet');
+
+  // Populate header
+  const badgeEl = document.getElementById('vehicle-sheet-badge');
+  const headsignEl = document.getElementById('vehicle-sheet-headsign');
+  const statusEl = document.getElementById('vehicle-sheet-status');
+
+  const routeShortName = vehicle.routeShortName || '?';
+  badgeEl.textContent = routeShortName;
+  badgeEl.className = 'route-badge route-type-bus';
+
+  const tripHeadsign = vehicle.tripStatus?.tripHeadsign || 'Unknown';
+  headsignEl.textContent = tripHeadsign;
+
+  const schedDev = vehicle.tripStatus?.scheduleDeviation || 0;
+  const schedDevMins = Math.round(schedDev / 60);
+  let statusText = 'On time';
+  if (schedDevMins > 1) statusText = `${schedDevMins} min late`;
+  else if (schedDevMins < -1) statusText = `${-schedDevMins} min early`;
+  statusEl.textContent = statusText;
+
+  // Show loading
+  const stopsEl = document.getElementById('vehicle-sheet-stops');
+  stopsEl.innerHTML = '<div class="state-box"><div class="spinner"></div><p>Loading stops…</p></div>';
+
+  // Fetch trip details
+  try {
+    const tripData = await apiFetch(`trip-for-vehicle/${vehicle.vehicleId}`, {
+      includeSchedule: true,
+      includeStatus: true,
+    });
+
+    const stopTimes = tripData.schedule?.stopTimes || [];
+    const references = tripData.references || {};
+    const stopMap = {};
+    (references.stops || []).forEach(s => { stopMap[s.id] = s; });
+
+    const serviceDate = tripData.schedule?.serviceDate || tripData.status?.serviceDate || 0;
+    const schedDev = tripData.status?.scheduleDeviation || 0;
+
+    // Filter to upcoming stops (not yet passed)
+    const now = Date.now();
+    const upcoming = stopTimes
+      .filter(st => {
+        const estArrival = serviceDate + (st.arrivalTime * 1000) - (schedDev * 1000);
+        return estArrival > now;
+      })
+      .slice(0, 5);
+
+    if (upcoming.length === 0) {
+      stopsEl.innerHTML = '<div class="state-box"><p style="color:var(--text-secondary);">No upcoming stops</p></div>';
+    } else {
+      stopsEl.innerHTML = upcoming.map(st => {
+        const stop = stopMap[st.stopId] || {};
+        const estArrival = new Date(serviceDate + (st.arrivalTime * 1000) - (schedDev * 1000));
+        const minsAway = Math.round((estArrival - now) / 60000);
+        const displayTime = minsAway <= 0 ? 'Now' : `${minsAway} min`;
+
+        return `
+          <div class="vehicle-stop-row">
+            <div class="vehicle-stop-name">${stop.name || st.stopId}</div>
+            <div class="vehicle-stop-time">${displayTime}</div>
+          </div>`;
+      }).join('');
+    }
+  } catch (err) {
+    stopsEl.innerHTML = '<div class="state-box"><p style="color:var(--text-secondary);">Failed to load stops</p></div>';
+    console.warn('Failed to load vehicle trip:', err);
+  }
+
+  // Show stale indicator if needed
+  const staleEl = document.getElementById('vehicle-sheet-stale');
+  const stale = Date.now() - vehicle.lastLocationUpdateTime > 90_000;
+  if (stale) {
+    const secondsAgo = Math.round((Date.now() - vehicle.lastLocationUpdateTime) / 1000);
+    staleEl.textContent = `Location last updated ${secondsAgo}s ago`;
+    staleEl.classList.remove('hidden');
+  } else {
+    staleEl.classList.add('hidden');
+  }
+
+  sheet.classList.add('visible');
+}
+
+function hideMapVehicleSheet() {
+  document.getElementById('map-vehicle-sheet').classList.remove('visible');
 }
 
 function swapMapTiles() {
@@ -1092,6 +1242,13 @@ function toggleMapView() {
     content.classList.remove('hidden');
     mapContainer.classList.add('hidden');
     if (btn) { btn.innerHTML = icon('map'); btn.classList.remove('active'); }
+    // Stop vehicle polling
+    if (state.vehicleRefreshTimer) {
+      clearInterval(state.vehicleRefreshTimer);
+      state.vehicleRefreshTimer = null;
+    }
+    // Hide vehicle sheet
+    hideMapVehicleSheet();
   }
 }
 

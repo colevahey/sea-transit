@@ -914,5 +914,101 @@ body.light-mode .stop-map-tooltip {
   background: rgba(240, 247, 243, 0.92) !important;
 }
 
+/* ─── Vehicle markers on map ───────────────────────────────────────────────── */
+.vehicle-map-marker { background: transparent; border: none; }
+.vehicle-marker-body {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: #000;
+  position: relative;
+}
+.vehicle-marker-body svg { width: 16px; height: 16px; }
+
+.vehicle-marker-arrow {
+  position: absolute;
+  top: -6px;
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--accent);
+  transition: transform 0.3s ease;
+}
+
+.vehicle-stale .vehicle-marker-body {
+  background: rgba(128, 128, 128, 0.45);
+  color: rgba(255, 255, 255, 0.5);
+}
+.vehicle-stale .vehicle-marker-arrow {
+  border-bottom-color: rgba(128, 128, 128, 0.45);
+}
+
+/* ─── Vehicle bottom sheet ─────────────────────────────────────────────────── */
+.map-vehicle-sheet {
+  /* inherits .map-stop-sheet base styles */
+}
+
+.map-vehicle-sheet-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.map-vehicle-sheet-header .route-badge {
+  min-width: 44px; height: 28px;
+  font-size: 15px; flex-shrink: 0;
+}
+
+.map-vehicle-sheet-info { flex: 1; min-width: 0; }
+
+.map-vehicle-sheet-headsign {
+  font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.map-vehicle-sheet-status {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.vehicle-sheet-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-tertiary);
+  padding: 10px 16px 6px;
+  margin: 0;
+}
+
+.vehicle-sheet-stops {
+  padding: 0;
+}
+
+.vehicle-stop-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--glass-border);
+}
+.vehicle-stop-row:last-child { border-bottom: none; padding-bottom: 12px; }
+
+.vehicle-stop-name {
+  font-size: 13px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1;
+}
+
+.vehicle-stop-time {
+  font-size: 13px; font-weight: 600; color: var(--accent-bright);
+  flex-shrink: 0; white-space: nowrap;
+}
+
+.vehicle-stale-warning {
+  padding: 8px 16px; margin: 8px 16px 0;
+  border-radius: var(--radius-sm);
+  background: rgba(150, 150, 150, 0.15);
+  border: 1px solid rgba(150, 150, 150, 0.25);
+  font-size: 11px; color: var(--text-secondary);
+  text-align: center;
+}
+
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
