@@ -1114,28 +1114,33 @@ function updateVehicleMarkers() {
     const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 180_000);
 
     const orientation = vehicle.tripStatus?.orientation ?? 0;
-    const routeLabel = vehicle.resolvedRouteShortName || '?';
+    // OBA orientation is 0=north but measured clockwise from south, so add 180° to correct.
+    const arrowRotation = (orientation + 180) % 360;
+    const rawLabel = vehicle.resolvedRouteShortName || '?';
+    // Abbreviate lettered routes: "D Line" → "D", "E Line" → "E"
+    const routeLabel = /^([A-Z])\s+Line$/i.test(rawLabel) ? rawLabel[0].toUpperCase() : rawLabel;
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
-    // Route number badge stays upright; direction ring rotates around it.
-    // 40×40 container keeps the arrow inside at all headings.
+    // App icon stays upright; direction ring (48×48) rotates around it.
+    // Arrow at top:3px → 21px from center → stays inside at all headings.
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
       html: `
         <div class="vehicle-marker-outer">
-          <div class="vehicle-marker-badge">${routeLabel}</div>
-          <div class="vehicle-direction-ring" style="transform: rotate(${orientation}deg)">
+          <div class="vehicle-direction-ring" style="transform: rotate(${arrowRotation}deg)">
             <div class="vehicle-direction-tip"></div>
           </div>
+          <img src="/icons/icon.svg" class="vehicle-marker-img" width="32" height="32">
+          <div class="vehicle-marker-badge">${routeLabel}</div>
         </div>`,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [48, 48],
+      iconAnchor: [24, 24],
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
       .addTo(state.leafletMap);
-    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -20], className: 'stop-map-tooltip' });
+    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -24], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     state.leafletVehicleMarkers.push(marker);
   });
@@ -1265,10 +1270,12 @@ function toggleMapView() {
   const mapContainer = document.getElementById('map-container');
   const btn          = document.getElementById('btn-map-toggle');
 
+  const navBar = document.querySelector('.nav-bar');
   if (state.mapView) {
     content.classList.add('hidden');
     mapContainer.classList.remove('hidden');
     if (btn) { btn.innerHTML = icon('list'); btn.classList.add('active'); }
+    if (navBar) navBar.style.pointerEvents = 'none';
     requestAnimationFrame(() => {
       initMap();
       if (state.leafletMap) state.leafletMap.invalidateSize();
@@ -1277,6 +1284,7 @@ function toggleMapView() {
     content.classList.remove('hidden');
     mapContainer.classList.add('hidden');
     if (btn) { btn.innerHTML = icon('map'); btn.classList.remove('active'); }
+    if (navBar) navBar.style.pointerEvents = '';
     // Stop vehicle polling
     if (state.vehicleRefreshTimer) {
       clearInterval(state.vehicleRefreshTimer);

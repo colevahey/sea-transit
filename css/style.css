@@ -249,7 +249,7 @@ body.light-mode::after {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 16px);
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
   position: relative;
 }
 .content::-webkit-scrollbar { display: none; }
@@ -415,7 +415,7 @@ body.light-mode::after {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   padding-top: 8px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: var(--safe-bottom);
   background: rgba(8, 12, 10, 0.85);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
@@ -754,7 +754,7 @@ body.light-mode .nav-bar {
 /* ─── Map stop sheet ────────────────────────────────────────────────────────── */
 .map-stop-sheet {
   position: absolute;
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12px);
   left: 32px; right: 32px;
   background: var(--glass-bg-raised);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -917,38 +917,49 @@ body.light-mode .stop-map-tooltip {
 /* ─── Vehicle markers on map ───────────────────────────────────────────────── */
 .vehicle-map-marker { background: transparent; border: none; }
 
-/* 40×40 container — arrow stays within bounds at all rotation angles
-   (arrow is 17px from center; 17 < 20, so it never exits the box) */
+/* 48×48 container — arrow at top:3px is 21px from center, stays inside
+   at all rotation angles (21 < 24 = container radius) */
 .vehicle-marker-outer {
   position: relative;
-  width: 40px; height: 40px;
+  width: 48px; height: 48px;
   display: flex; align-items: center; justify-content: center;
 }
 
-.vehicle-marker-badge {
-  background: var(--accent);
-  color: #000;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  border-radius: 6px;
-  min-width: 26px;
-  padding: 5px 5px;
-  text-align: center;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+/* App icon — centered, sits above the route badge */
+.vehicle-marker-img {
+  border-radius: 7px;
+  display: block;
   position: relative;
   z-index: 1;
 }
 
-/* Rotating ring — pivots around the 40×40 center */
+/* Route number overlaid at the bottom of the icon */
+.vehicle-marker-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #000;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  z-index: 2;
+}
+
+/* Rotating ring — pivots around the 48×48 center */
 .vehicle-direction-ring {
   position: absolute;
   inset: 0;
   transform-origin: center center;
 }
 
-/* Arrow tip at top: 3px → 17px above center → stays inside at all angles */
+/* Arrow tip at top:3px → 21px above center */
 .vehicle-direction-tip {
   position: absolute;
   top: 3px;
@@ -961,10 +972,12 @@ body.light-mode .stop-map-tooltip {
 }
 
 /* Stale vehicle — greyed out */
+.vehicle-stale .vehicle-marker-img {
+  filter: grayscale(1) opacity(0.5);
+}
 .vehicle-stale .vehicle-marker-badge {
-  background: rgba(110, 110, 110, 0.65);
+  background: rgba(110, 110, 110, 0.8);
   color: rgba(255, 255, 255, 0.6);
-  box-shadow: none;
 }
 .vehicle-stale .vehicle-direction-tip {
   border-bottom-color: rgba(110, 110, 110, 0.65);
