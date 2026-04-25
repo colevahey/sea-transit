@@ -1118,23 +1118,24 @@ function updateVehicleMarkers() {
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
-    // Bus icon stays upright; only the direction indicator rotates around it.
+    // Route number badge stays upright; direction ring rotates around it.
+    // 40×40 container keeps the arrow inside at all headings.
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
       html: `
         <div class="vehicle-marker-outer">
-          <div class="vehicle-marker-body">${icon('busMarker')}</div>
-          <div class="vehicle-direction-indicator" style="transform: rotate(${orientation}deg)">
+          <div class="vehicle-marker-badge">${routeLabel}</div>
+          <div class="vehicle-direction-ring" style="transform: rotate(${orientation}deg)">
             <div class="vehicle-direction-tip"></div>
           </div>
         </div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
       .addTo(state.leafletMap);
-    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -23], className: 'stop-map-tooltip' });
+    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -20], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     state.leafletVehicleMarkers.push(marker);
   });
