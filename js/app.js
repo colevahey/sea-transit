@@ -202,7 +202,9 @@ const state = {
   leafletMap: null,
   leafletTileLayer: null,
   leafletUserMarker: null,
-  leafletStopMarkers: [],
+  stopCache: new Map(),
+  stopMarkerIndex: new Map(),
+  selectedStopMarker: null,
   mapSelectedStop: null,
   mapLoadCenter: null,
   vehicles: [],
@@ -1166,12 +1168,10 @@ function updateMapMarkers() {
     }
   }
 
-  // Stop markers
-  state.leafletStopMarkers.forEach(m => m.remove());
-  state.leafletStopMarkers = [];
-
-  state.stops.forEach(stop => {
-    if (!stop.lat || !stop.lon) return;
+  // Stop markers — additive cache: merge new stops, only create markers for unseen stops
+  state.stops.forEach(s => state.stopCache.set(s.id, s));
+  state.stopCache.forEach((stop, id) => {
+    if (!stop.lat || !stop.lon || state.stopMarkerIndex.has(id)) return;
     const stopIcon = L.divIcon({
       className: 'stop-map-marker',
       html: '<div class="stop-marker-dot"></div>',
@@ -1181,11 +1181,10 @@ function updateMapMarkers() {
     const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon, pane: 'stopPane' });
     marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapVehicleSheet(); showMapStopSheet(stop); });
-    marker._stopId = stop.id;
-    if (!state.vehicleFilter || state.upcomingStopIds.has(stop.id)) {
+    if (!state.vehicleFilter || state.upcomingStopIds.has(id)) {
       marker.addTo(state.leafletMap);
     }
-    state.leafletStopMarkers.push(marker);
+    state.stopMarkerIndex.set(id, marker);
   });
 
   // Vehicle markers
@@ -1234,8 +1233,17 @@ function updateVehicleMarkers() {
 
 function showMapStopSheet(stop) {
   state.mapSelectedStop = stop;
-  state.leafletStopMarkers.forEach(m => m.getElement()?.classList.remove('selected'));
-  state.leafletStopMarkers.find(m => m._stopId === stop.id)?.getElement()?.classList.add('selected');
+  if (state.selectedStopMarker) { state.selectedStopMarker.remove(); state.selectedStopMarker = null; }
+  if (stop.lat && stop.lon && state.leafletMap) {
+    const selIcon = L.divIcon({
+      className: 'stop-map-marker selected',
+      html: '<div class="stop-marker-dot"></div>',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
+    });
+    state.selectedStopMarker = L.marker([stop.lat, stop.lon], { icon: selIcon, zIndexOffset: 500 })
+      .addTo(state.leafletMap);
+  }
   const sheet = document.getElementById('map-stop-sheet');
   sheet.querySelector('.map-stop-sheet-name').textContent = stop.name;
   const dist = (state.userLat && stop.lat)
@@ -1252,7 +1260,7 @@ function showMapStopSheet(stop) {
 
 function hideMapStopSheet() {
   document.getElementById('map-stop-sheet').classList.remove('visible');
-  state.leafletStopMarkers.forEach(m => m.getElement()?.classList.remove('selected'));
+  if (state.selectedStopMarker) { state.selectedStopMarker.remove(); state.selectedStopMarker = null; }
 }
 
 async function showMapVehicleSheet(vehicle) {
@@ -1349,14 +1357,14 @@ async function showMapVehicleSheet(vehicle) {
       ? routeShortName[0].toUpperCase() : routeShortName;
 
     // Restore any markers hidden by a previous selection before applying new filter
-    state.leafletStopMarkers.forEach(m => { if (!state.leafletMap.hasLayer(m)) m.addTo(state.leafletMap); });
+    state.stopMarkerIndex.forEach(m => { if (!state.leafletMap.hasLayer(m)) m.addTo(state.leafletMap); });
     state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap.hasLayer(m)) m.addTo(state.leafletMap); });
 
     state.vehicleFilter   = { routeLabel: routeLabelForFilter, headsign: tripHeadsign };
     state.upcomingStopIds = new Set(allUpcoming.map(st => st.stopId));
 
-    state.leafletStopMarkers.forEach(m => {
-      if (!state.upcomingStopIds.has(m._stopId)) m.remove();
+    state.stopMarkerIndex.forEach((m, id) => {
+      if (!state.upcomingStopIds.has(id)) m.remove();
     });
 
     state.leafletVehicleMarkers.forEach(m => {
@@ -1376,7 +1384,7 @@ async function showMapVehicleSheet(vehicle) {
         });
         return L.marker([s.lat, s.lon], { icon: stopIcon, pane: 'vehiclePane' })
           .bindTooltip(s.name || st.stopId, { direction: 'top', offset: [0, -10], className: 'stop-map-tooltip' })
-          .on('click', () => { hideMapVehicleSheet(); showMapStopSheet(s); })
+          .on('click', () => { showMapStopSheet(s); hideMapVehicleSheet(); })
           .addTo(state.leafletMap);
       })
       .filter(Boolean);
@@ -1423,7 +1431,7 @@ function hideMapVehicleSheet() {
   state.upcomingStopMarkers = [];
   state.vehicleFilter   = null;
   state.upcomingStopIds = new Set();
-  state.leafletStopMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
+  state.stopMarkerIndex.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
   state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
 }
 
