@@ -1166,13 +1166,14 @@ function updateVehicleMarkers() {
     const rawLabel = vehicle.resolvedRouteShortName || '?';
     // Abbreviate lettered routes: "D Line" → "D", "E Line" → "E"
     const routeLabel = /^([A-Z])\s+Line$/i.test(rawLabel) ? rawLabel[0].toUpperCase() : rawLabel;
-    const cardinal = toCardinal(orientation);
+    // OBA orientation is 180° off from standard bearing (same offset as the former arrow fix).
+    const cardinal = toCardinal((orientation + 180) % 360);
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
-      html: `<div class="vehicle-marker-badge">${routeLabel}<span class="vehicle-marker-dir">${cardinal}</span></div>`,
+      html: `<div class="vehicle-marker-badge"><span class="vehicle-marker-num">${routeLabel}</span><span class="vehicle-marker-dir">${cardinal}</span></div>`,
       iconSize: [0, 0],
       iconAnchor: [0, 0],
     });
