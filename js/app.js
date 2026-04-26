@@ -304,6 +304,8 @@ async function apiFetch(endpoint, params = {}) {
   url.searchParams.set('endpoint', endpoint);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
+  // OBA returns 404 for valid stops with no current data; treat as empty rather than error.
+  if (res.status === 404) return { list: [], entry: { arrivalsAndDepartures: [], stopTimes: [] } };
   if (!res.ok) throw new Error(`API error ${res.status}`);
   const json = await res.json();
   if (json.code !== 200) throw new Error(`OBA error code ${json.code}`);
@@ -1170,9 +1172,9 @@ function updateVehicleMarkers() {
 
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
-      html: `<div class="vehicle-marker-badge">${routeLabel}<span class="vehicle-marker-dir"> ${cardinal}</span></div>`,
-      iconSize: null,
-      iconAnchor: null,
+      html: `<div class="vehicle-marker-badge">${routeLabel}<span class="vehicle-marker-dir">${cardinal}</span></div>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
