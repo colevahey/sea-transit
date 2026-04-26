@@ -102,6 +102,16 @@ function toCardinal(deg) {
   return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
 }
 
+// ─── OBA arrival time helpers ─────────────────────────────────────────────────
+// OBA uses -1 as a sentinel for "no real-time prediction" — treat anything ≤ 0
+// as unset so -1 doesn't get used as a literal epoch timestamp.
+function arrivalTime(a) {
+  return a.predictedArrivalTime > 0 ? a.predictedArrivalTime : a.scheduledArrivalTime;
+}
+function isRealtime(a) {
+  return a.predictedArrivalTime > 0;
+}
+
 // ─── Safe area inset measurement ──────────────────────────────────────────────
 // iOS WKWebView evaluates env(safe-area-inset-bottom) at CSS parse time, before
 // standalone layout finishes — so the :root custom property freezes at 0px.
@@ -491,13 +501,13 @@ async function refreshArrivals() {
 
 function renderArrivalRow(arrival) {
   const now = Date.now();
-  const predicted = arrival.predictedArrivalTime || arrival.scheduledArrivalTime;
+  const predicted = arrivalTime(arrival);
   const scheduled = arrival.scheduledArrivalTime;
   const minsAway = Math.round((predicted - now) / 60000);
   const displayMins = minsAway <= 0 ? 'Now' : minsAway;
   const minLabel = minsAway <= 0 ? '' : 'min';
 
-  const hasPredicted = !!arrival.predictedArrivalTime;
+  const hasPredicted = isRealtime(arrival);
   const diffMs = predicted - scheduled;
   let statusClass = 'on-time';
   let statusText = 'On time';
@@ -646,9 +656,9 @@ function renderRouteCard(route) {
     const h = a.tripHeadsign || 'Unknown';
     if (seen.has(h)) continue;
     seen.add(h);
-    const t = a.predictedArrivalTime || a.scheduledArrivalTime;
+    const t = arrivalTime(a);
     const mins = Math.round((t - now) / 60000);
-    const hasPredicted = !!a.predictedArrivalTime;
+    const hasPredicted = isRealtime(a);
     rows.push({ headsign: h, display: mins <= 0 ? 'Now' : `${mins} min`, hasPredicted });
   }
 
@@ -753,12 +763,9 @@ async function loadNearbyRoutes() {
 
     const routes = [...routeMap.values()];
     routes.forEach(r => {
-      r.arrivals.sort((a, b) =>
-        (a.predictedArrivalTime || a.scheduledArrivalTime) -
-        (b.predictedArrivalTime || b.scheduledArrivalTime)
-      );
+      r.arrivals.sort((a, b) => arrivalTime(a) - arrivalTime(b));
       const first = r.arrivals[0];
-      r.nextTime = first ? (first.predictedArrivalTime || first.scheduledArrivalTime) : Infinity;
+      r.nextTime = first ? arrivalTime(first) : Infinity;
       r.headsigns = [...new Set(r.arrivals.map(a => a.tripHeadsign).filter(Boolean))];
       r.singleDirection = r.headsigns.length === 1;
     });
@@ -832,12 +839,7 @@ async function loadRouteArrivals(routeShortName) {
       });
     });
 
-    // Sort by predicted arrival time, take top 15
-    arrivals.sort((a, b) => {
-      const tA = a.predictedArrivalTime || a.scheduledArrivalTime;
-      const tB = b.predictedArrivalTime || b.scheduledArrivalTime;
-      return tA - tB;
-    });
+    arrivals.sort((a, b) => arrivalTime(a) - arrivalTime(b));
     const top15 = arrivals.slice(0, 15);
 
     if (top15.length === 0) {
@@ -856,11 +858,11 @@ function renderFavPanel(fav, arrivals, distStr = '') {
     ? '<div class="fav-arrival-row fav-arrival-empty">No upcoming arrivals</div>'
     : arrivals.map(a => {
         const now = Date.now();
-        const predicted = a.predictedArrivalTime || a.scheduledArrivalTime;
+        const predicted = arrivalTime(a);
         const minsAway = Math.round((predicted - now) / 60000);
         const displayMins = minsAway <= 0 ? 'Now' : minsAway;
         const minLabel = minsAway <= 0 ? '' : ' min';
-        const hasPredicted = !!a.predictedArrivalTime;
+        const hasPredicted = isRealtime(a);
         const scheduledBadge = !hasPredicted ? '<span class="scheduled-badge fav-scheduled-badge">S</span>' : '';
         return `
           <div class="fav-arrival-row">
