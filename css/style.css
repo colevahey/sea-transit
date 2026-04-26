@@ -897,7 +897,6 @@ body.light-mode .leaflet-control-attribution {
   width: 14px; height: 14px;
   border-radius: 50%;
   background: #f97316;
-  border: 2.5px solid #fff;
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
@@ -961,21 +960,10 @@ body.light-mode .stop-map-tooltip {
   padding: 3px 5px;
 }
 
-/* Cardinal direction — red, white text (contrast ≈ 4.8:1, passes WCAG AA) */
-.vehicle-marker-dir {
-  background: #dc2626;
-  color: #fff;
-  padding: 3px 4px;
-}
-
-/* Stale vehicle — both sections greyed out */
+/* Stale vehicle */
 .vehicle-stale .vehicle-marker-num {
   background: rgba(110, 110, 110, 0.75);
   color: rgba(255, 255, 255, 0.55);
-}
-.vehicle-stale .vehicle-marker-dir {
-  background: rgba(80, 80, 80, 0.75);
-  color: rgba(255, 255, 255, 0.45);
 }
 
 /* ─── Vehicle bottom sheet ─────────────────────────────────────────────────── */

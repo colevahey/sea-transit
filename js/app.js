@@ -1105,6 +1105,11 @@ function initMap() {
 
   state.leafletMap = map;
 
+  // Custom panes for z-order: stop dots → vehicles → user location
+  map.createPane('stopPane').style.zIndex   = '420';
+  map.createPane('vehiclePane').style.zIndex = '430';
+  map.createPane('userPane').style.zIndex    = '440';
+
   // Locate button — re-centers map on user position
   const LocateControl = L.Control.extend({
     onAdd() {
@@ -1156,7 +1161,7 @@ function updateMapMarkers() {
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
-      state.leafletUserMarker = L.marker([state.userLat, state.userLon], { icon: userIcon })
+      state.leafletUserMarker = L.marker([state.userLat, state.userLon], { icon: userIcon, pane: 'userPane' })
         .addTo(state.leafletMap);
     }
   }
@@ -1173,13 +1178,12 @@ function updateMapMarkers() {
       iconSize: [12, 12],
       iconAnchor: [6, 6],
     });
-    const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon }).addTo(state.leafletMap);
+    const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon, pane: 'stopPane' });
     marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapVehicleSheet(); showMapStopSheet(stop); });
     marker._stopId = stop.id;
-    if (state.vehicleFilter && !state.upcomingStopIds.has(stop.id)) {
-      marker.getElement()?.style.setProperty('opacity', '0');
-      marker.getElement()?.style.setProperty('pointer-events', 'none');
+    if (!state.vehicleFilter || state.upcomingStopIds.has(stop.id)) {
+      marker.addTo(state.leafletMap);
     }
     state.leafletStopMarkers.push(marker);
   });
@@ -1203,36 +1207,27 @@ function updateVehicleMarkers() {
     const lastLocTime = vehicle.lastLocationUpdateTime || vehicle.lastUpdateTime || 0;
     const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 180_000);
 
-    const orientation = vehicle.tripStatus?.orientation ?? 0;
     const rawLabel = vehicle.resolvedRouteShortName || '?';
     // Abbreviate lettered routes: "D Line" → "D", "E Line" → "E"
     const routeLabel = /^([A-Z])\s+Line$/i.test(rawLabel) ? rawLabel[0].toUpperCase() : rawLabel;
-    // OBA orientation is 180° off from standard bearing (same offset as the former arrow fix).
-    const cardinal = toCardinal((orientation + 180) % 360);
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
-      html: `<div class="vehicle-marker-badge"><span class="vehicle-marker-num">${routeLabel}</span><span class="vehicle-marker-dir">${cardinal}</span></div>`,
+      html: `<div class="vehicle-marker-badge"><span class="vehicle-marker-num">${routeLabel}</span></div>`,
       iconSize: [0, 0],
       iconAnchor: [0, 0],
     });
 
-    const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
-      .addTo(state.leafletMap);
+    const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon, pane: 'vehiclePane' });
     marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -14], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     marker._routeLabel = routeLabel;
     marker._headsign = headsign;
-    if (state.vehicleFilter) {
-      const match = marker._routeLabel === state.vehicleFilter.routeLabel
-                 && marker._headsign   === state.vehicleFilter.headsign;
-      if (!match) {
-        marker.getElement()?.style.setProperty('opacity', '0');
-        marker.getElement()?.style.setProperty('pointer-events', 'none');
-      }
-    }
+    const vehicleVisible = !state.vehicleFilter
+      || (marker._routeLabel === state.vehicleFilter.routeLabel && marker._headsign === state.vehicleFilter.headsign);
+    if (vehicleVisible) marker.addTo(state.leafletMap);
     state.leafletVehicleMarkers.push(marker);
   });
 }
@@ -1346,22 +1341,23 @@ async function showMapVehicleSheet(vehicle) {
       }
     }
 
-    // Filter map: dim unrelated stops/vehicles; show big orange upcoming stop markers
+    // Filter map: hide unrelated stops/vehicles; show big orange upcoming stop markers
     const routeLabelForFilter = /^([A-Z])\s+Line$/i.test(routeShortName)
       ? routeShortName[0].toUpperCase() : routeShortName;
+
+    // Restore any markers hidden by a previous selection before applying new filter
+    state.leafletStopMarkers.forEach(m => { if (!state.leafletMap.hasLayer(m)) m.addTo(state.leafletMap); });
+    state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap.hasLayer(m)) m.addTo(state.leafletMap); });
+
     state.vehicleFilter   = { routeLabel: routeLabelForFilter, headsign: tripHeadsign };
     state.upcomingStopIds = new Set(allUpcoming.map(st => st.stopId));
 
     state.leafletStopMarkers.forEach(m => {
-      const show = state.upcomingStopIds.has(m._stopId);
-      m.getElement()?.style.setProperty('opacity', show ? '1' : '0');
-      m.getElement()?.style.setProperty('pointer-events', show ? '' : 'none');
+      if (!state.upcomingStopIds.has(m._stopId)) m.remove();
     });
 
     state.leafletVehicleMarkers.forEach(m => {
-      const match = m._routeLabel === routeLabelForFilter && m._headsign === tripHeadsign;
-      m.getElement()?.style.setProperty('opacity', match ? '1' : '0');
-      m.getElement()?.style.setProperty('pointer-events', match ? '' : 'none');
+      if (m._routeLabel !== routeLabelForFilter || m._headsign !== tripHeadsign) m.remove();
     });
 
     state.upcomingStopMarkers.forEach(m => m.remove());
@@ -1375,8 +1371,9 @@ async function showMapVehicleSheet(vehicle) {
           iconSize: [18, 18],
           iconAnchor: [9, 9],
         });
-        return L.marker([s.lat, s.lon], { icon: stopIcon })
+        return L.marker([s.lat, s.lon], { icon: stopIcon, pane: 'vehiclePane' })
           .bindTooltip(s.name || st.stopId, { direction: 'top', offset: [0, -10], className: 'stop-map-tooltip' })
+          .on('click', () => showMapStopSheet(s))
           .addTo(state.leafletMap);
       })
       .filter(Boolean);
@@ -1423,14 +1420,8 @@ function hideMapVehicleSheet() {
   state.upcomingStopMarkers = [];
   state.vehicleFilter   = null;
   state.upcomingStopIds = new Set();
-  state.leafletStopMarkers.forEach(m => {
-    m.getElement()?.style.removeProperty('opacity');
-    m.getElement()?.style.removeProperty('pointer-events');
-  });
-  state.leafletVehicleMarkers.forEach(m => {
-    m.getElement()?.style.removeProperty('opacity');
-    m.getElement()?.style.removeProperty('pointer-events');
-  });
+  state.leafletStopMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
+  state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
 }
 
 function swapMapTiles() {
