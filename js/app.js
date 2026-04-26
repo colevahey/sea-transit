@@ -1373,7 +1373,7 @@ async function showMapVehicleSheet(vehicle) {
         });
         return L.marker([s.lat, s.lon], { icon: stopIcon, pane: 'vehiclePane' })
           .bindTooltip(s.name || st.stopId, { direction: 'top', offset: [0, -10], className: 'stop-map-tooltip' })
-          .on('click', () => showMapStopSheet(s))
+          .on('click', () => { hideMapVehicleSheet(); showMapStopSheet(s); })
           .addTo(state.leafletMap);
       })
       .filter(Boolean);

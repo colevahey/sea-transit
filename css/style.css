@@ -904,8 +904,8 @@ body.light-mode .leaflet-control-attribution {
 .stop-marker-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
-  background: var(--accent-bright);
-  border: 2px solid rgba(0,0,0,0.5);
+  background: rgba(255,255,255,0.28);
+  border: 1.5px solid rgba(255,255,255,0.45);
   cursor: pointer;
   transition: transform 0.1s;
 }
