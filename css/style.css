@@ -744,7 +744,8 @@ body.light-mode .nav-bar {
 /* ─── Map container ──────────────────────────────────────────────────────────── */
 #map-container {
   flex: 1;
-  padding: 0;
+  /* Inset the map: 8px sides, clear the fixed nav bar + safe area at the bottom */
+  padding: 6px 8px calc(var(--nav-height) + var(--safe-bottom) + 8px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -754,8 +755,9 @@ body.light-mode .nav-bar {
 /* ─── Map stop sheet ────────────────────────────────────────────────────────── */
 .map-stop-sheet {
   position: absolute;
-  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12px);
-  left: 32px; right: 32px;
+  /* Container already clears the nav bar via padding-bottom; position within that space */
+  bottom: 12px;
+  left: 24px; right: 24px;
   background: var(--glass-bg-raised);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -818,7 +820,7 @@ body.light-mode .nav-bar {
 .map-stop-sheet-arrivals-btn:active { background: rgba(34, 197, 94, 0.30); }
 #stops-map {
   flex: 1;
-  border-radius: 0;
+  border-radius: 16px;
   overflow: hidden;
   min-height: 200px;
 }

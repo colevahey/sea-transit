@@ -91,6 +91,24 @@ const ICONS = {
   </svg>`,
 };
 
+// ─── Safe area inset measurement ──────────────────────────────────────────────
+// iOS WKWebView evaluates env(safe-area-inset-bottom) at CSS parse time, before
+// standalone layout finishes — so the :root custom property freezes at 0px.
+// Fix: probe the actual pixel value after first paint and set it as an inline
+// style, which overrides the stylesheet value and cascades to all var(--safe-bottom) uses.
+function initSafeArea() {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;bottom:0;left:0;right:0;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden';
+  document.body.appendChild(probe);
+  requestAnimationFrame(() => {
+    const h = Math.round(probe.getBoundingClientRect().height);
+    document.body.removeChild(probe);
+    if (h > 0) {
+      document.documentElement.style.setProperty('--safe-bottom', h + 'px');
+    }
+  });
+}
+
 function icon(name) {
   return ICONS[name] || '';
 }
@@ -1270,12 +1288,10 @@ function toggleMapView() {
   const mapContainer = document.getElementById('map-container');
   const btn          = document.getElementById('btn-map-toggle');
 
-  const navBar = document.querySelector('.nav-bar');
   if (state.mapView) {
     content.classList.add('hidden');
     mapContainer.classList.remove('hidden');
     if (btn) { btn.innerHTML = icon('list'); btn.classList.add('active'); }
-    if (navBar) navBar.style.pointerEvents = 'none';
     requestAnimationFrame(() => {
       initMap();
       if (state.leafletMap) state.leafletMap.invalidateSize();
@@ -1284,7 +1300,6 @@ function toggleMapView() {
     content.classList.remove('hidden');
     mapContainer.classList.add('hidden');
     if (btn) { btn.innerHTML = icon('map'); btn.classList.remove('active'); }
-    if (navBar) navBar.style.pointerEvents = '';
     // Stop vehicle polling
     if (state.vehicleRefreshTimer) {
       clearInterval(state.vehicleRefreshTimer);
@@ -1371,6 +1386,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
+
+  // Measure and apply safe area insets after first paint (fixes WKWebView timing).
+  requestAnimationFrame(initSafeArea);
+  setTimeout(initSafeArea, 150); // second pass for slower WKWebView inset delivery
+  window.addEventListener('orientationchange', () => setTimeout(initSafeArea, 150));
 
 
   // Watch position for real-time distance updates (Task C)
