@@ -155,6 +155,22 @@ function firstRouteShortLabel(routeIds) {
   return label && label.length <= 4 ? label : null;
 }
 
+// ─── Encoded polyline decoder (Google/OBA format) ─────────────────────────────
+function decodePolyline(encoded) {
+  const coords = [];
+  let index = 0, lat = 0, lon = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lon += (result & 1) ? ~(result >> 1) : result >> 1;
+    coords.push([lat / 1e5, lon / 1e5]);
+  }
+  return coords;
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const REFRESH_INTERVAL = 30; // seconds
 
@@ -183,6 +199,7 @@ const state = {
   leafletVehicleMarkers: [],
   mapSelectedVehicle: null,
   vehicleRefreshTimer: null,
+  routeHighlight: null,
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -1247,6 +1264,29 @@ async function showMapVehicleSheet(vehicle) {
     const stopMap = {};
     (tripData.references?.stops || []).forEach(s => { stopMap[s.id] = s; });
 
+    // Draw route highlight using the trip's GTFS shape (actual road/rail geometry)
+    if (state.routeHighlight) { state.routeHighlight.remove(); state.routeHighlight = null; }
+    const tripRef = (tripData.references?.trips || []).find(t => t.id === entry.tripId);
+    const shapeId = tripRef?.shapeId;
+    if (shapeId && state.leafletMap) {
+      try {
+        const shapeData = await apiFetch(`shape/${shapeId}`);
+        const encoded = shapeData.entry?.points;
+        if (encoded) {
+          const coords = decodePolyline(encoded);
+          if (coords.length > 1) {
+            state.routeHighlight = L.polyline(coords, {
+              color: '#f97316',
+              weight: 4,
+              opacity: 0.8,
+            }).addTo(state.leafletMap);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load route shape:', e);
+      }
+    }
+
     // serviceDate is epoch ms of midnight; arrivalTime is seconds since midnight
     // scheduleDeviation is seconds (positive = late), so add it to get estimated arrival
     const serviceDate = entry.serviceDate || entry.status?.serviceDate || 0;
@@ -1298,6 +1338,7 @@ async function showMapVehicleSheet(vehicle) {
 
 function hideMapVehicleSheet() {
   document.getElementById('map-vehicle-sheet').classList.remove('visible');
+  if (state.routeHighlight) { state.routeHighlight.remove(); state.routeHighlight = null; }
 }
 
 function swapMapTiles() {
