@@ -1234,6 +1234,8 @@ function updateVehicleMarkers() {
 
 function showMapStopSheet(stop) {
   state.mapSelectedStop = stop;
+  state.leafletStopMarkers.forEach(m => m.getElement()?.classList.remove('selected'));
+  state.leafletStopMarkers.find(m => m._stopId === stop.id)?.getElement()?.classList.add('selected');
   const sheet = document.getElementById('map-stop-sheet');
   sheet.querySelector('.map-stop-sheet-name').textContent = stop.name;
   const dist = (state.userLat && stop.lat)
@@ -1250,6 +1252,7 @@ function showMapStopSheet(stop) {
 
 function hideMapStopSheet() {
   document.getElementById('map-stop-sheet').classList.remove('visible');
+  state.leafletStopMarkers.forEach(m => m.getElement()?.classList.remove('selected'));
 }
 
 async function showMapVehicleSheet(vehicle) {
