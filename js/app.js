@@ -53,6 +53,11 @@ const ICONS = {
     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
   </svg>`,
 
+  locate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    <circle cx="12" cy="12" r="9" stroke-opacity="0.35"/>
+  </svg>`,
+
   clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="12" cy="12" r="10"/>
     <polyline points="12 6 12 12 16 14"/>
@@ -90,6 +95,12 @@ const ICONS = {
     <line x1="3" y1="18" x2="3.01" y2="18"/>
   </svg>`,
 };
+
+// ─── Cardinal direction helper ────────────────────────────────────────────────
+function toCardinal(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+}
 
 // ─── Safe area inset measurement ──────────────────────────────────────────────
 // iOS WKWebView evaluates env(safe-area-inset-bottom) at CSS parse time, before
@@ -1058,6 +1069,24 @@ function initMap() {
   }).addTo(map);
 
   state.leafletMap = map;
+
+  // Locate button — re-centers map on user position
+  const LocateControl = L.Control.extend({
+    onAdd() {
+      const btn = L.DomUtil.create('button', 'map-locate-btn');
+      btn.innerHTML = icon('locate');
+      btn.title = 'My location';
+      L.DomEvent.on(btn, 'click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (state.userLat && state.userLon) {
+          map.setView([state.userLat, state.userLon], 15);
+        }
+      });
+      return btn;
+    },
+  });
+  new LocateControl({ position: 'bottomright' }).addTo(map);
+
   map.on('click', () => { hideMapStopSheet(); hideMapVehicleSheet(); });
   map.on('moveend', () => {
     const c = map.getCenter();
@@ -1132,33 +1161,23 @@ function updateVehicleMarkers() {
     const stale = lastLocTime > 0 && (Date.now() - lastLocTime > 180_000);
 
     const orientation = vehicle.tripStatus?.orientation ?? 0;
-    // OBA orientation is 0=north but measured clockwise from south, so add 180° to correct.
-    const arrowRotation = (orientation + 180) % 360;
     const rawLabel = vehicle.resolvedRouteShortName || '?';
     // Abbreviate lettered routes: "D Line" → "D", "E Line" → "E"
     const routeLabel = /^([A-Z])\s+Line$/i.test(rawLabel) ? rawLabel[0].toUpperCase() : rawLabel;
+    const cardinal = toCardinal(orientation);
     const headsign = vehicle.resolvedHeadsign || '';
     const tooltipText = headsign ? `${routeLabel} · ${headsign}` : `Route ${routeLabel}`;
 
-    // App icon stays upright; direction ring (48×48) rotates around it.
-    // Arrow at top:3px → 21px from center → stays inside at all headings.
     const vehicleIcon = L.divIcon({
       className: `vehicle-map-marker${stale ? ' vehicle-stale' : ''}`,
-      html: `
-        <div class="vehicle-marker-outer">
-          <div class="vehicle-direction-ring" style="transform: rotate(${arrowRotation}deg)">
-            <div class="vehicle-direction-tip"></div>
-          </div>
-          <img src="/icons/icon.svg" class="vehicle-marker-img" width="32" height="32">
-          <div class="vehicle-marker-badge">${routeLabel}</div>
-        </div>`,
-      iconSize: [48, 48],
-      iconAnchor: [24, 24],
+      html: `<div class="vehicle-marker-badge">${routeLabel}<span class="vehicle-marker-dir"> ${cardinal}</span></div>`,
+      iconSize: null,
+      iconAnchor: null,
     });
 
     const marker = L.marker([vehicle.location.lat, vehicle.location.lon], { icon: vehicleIcon })
       .addTo(state.leafletMap);
-    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -24], className: 'stop-map-tooltip' });
+    marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -14], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
     state.leafletVehicleMarkers.push(marker);
   });

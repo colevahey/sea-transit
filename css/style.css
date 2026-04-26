@@ -414,8 +414,9 @@ body.light-mode::after {
 .nav-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  padding-top: 8px;
-  padding-bottom: var(--safe-bottom);
+  padding-top: 10px;
+  /* At least 10px at the bottom to balance top padding; safe area takes over on iOS */
+  padding-bottom: max(10px, var(--safe-bottom));
   background: rgba(8, 12, 10, 0.85);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
@@ -744,8 +745,8 @@ body.light-mode .nav-bar {
 /* ─── Map container ──────────────────────────────────────────────────────────── */
 #map-container {
   flex: 1;
-  /* Inset the map: 8px sides, clear the fixed nav bar + safe area at the bottom */
-  padding: 6px 8px calc(var(--nav-height) + var(--safe-bottom) + 8px);
+  /* Sides match .search-wrap (20px); bottom clears the fixed nav bar + safe area */
+  padding: 6px 20px calc(var(--nav-height) + var(--safe-bottom) + 8px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -917,72 +918,38 @@ body.light-mode .stop-map-tooltip {
 }
 
 /* ─── Vehicle markers on map ───────────────────────────────────────────────── */
-.vehicle-map-marker { background: transparent; border: none; }
-
-/* 48×48 container — arrow at top:3px is 21px from center, stays inside
-   at all rotation angles (21 < 24 = container radius) */
-.vehicle-marker-outer {
-  position: relative;
-  width: 48px; height: 48px;
-  display: flex; align-items: center; justify-content: center;
+/* iconSize: null lets Leaflet auto-size; transform centers on the lat/lon point */
+.vehicle-map-marker {
+  background: transparent !important;
+  border: none !important;
+  transform: translate(-50%, -50%) !important;
 }
 
-/* App icon — centered, sits above the route badge */
-.vehicle-marker-img {
-  border-radius: 7px;
-  display: block;
-  position: relative;
-  z-index: 1;
-}
-
-/* Route number overlaid at the bottom of the icon */
 .vehicle-marker-badge {
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   background: var(--accent);
   color: #000;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: -0.01em;
-  line-height: 1.2;
-  padding: 2px 5px;
-  border-radius: 3px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 5px;
   white-space: nowrap;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.6);
-  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.55);
 }
 
-/* Rotating ring — pivots around the 48×48 center */
-.vehicle-direction-ring {
-  position: absolute;
-  inset: 0;
-  transform-origin: center center;
-}
-
-/* Arrow tip at top:3px → 21px above center */
-.vehicle-direction-tip {
-  position: absolute;
-  top: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0; height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 7px solid var(--accent);
+.vehicle-marker-dir {
+  font-weight: 600;
+  opacity: 0.75;
 }
 
 /* Stale vehicle — greyed out */
-.vehicle-stale .vehicle-marker-img {
-  filter: grayscale(1) opacity(0.5);
-}
 .vehicle-stale .vehicle-marker-badge {
   background: rgba(110, 110, 110, 0.8);
   color: rgba(255, 255, 255, 0.6);
-}
-.vehicle-stale .vehicle-direction-tip {
-  border-bottom-color: rgba(110, 110, 110, 0.65);
 }
 
 /* ─── Vehicle bottom sheet ─────────────────────────────────────────────────── */
@@ -1050,6 +1017,26 @@ body.light-mode .stop-map-tooltip {
   font-size: 11px; color: var(--text-secondary);
   text-align: center;
 }
+
+/* ─── Map locate button (Leaflet bottomright control) ───────────────────────── */
+.map-locate-btn {
+  background: var(--glass-bg-raised) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--glass-shadow);
+  padding: 7px;
+  cursor: pointer;
+  color: var(--text-primary);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  margin: 0 10px 10px 0 !important;
+}
+.map-locate-btn svg { width: 18px; height: 18px; }
+.map-locate-btn:active { background: rgba(34, 197, 94, 0.2) !important; }
 
 /* ─── Utilities ─────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
