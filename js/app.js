@@ -171,6 +171,16 @@ function decodePolyline(encoded) {
   return coords;
 }
 
+function addSheetDismissGesture(sheetEl, hideFn) {
+  const handle = sheetEl.querySelector('.map-stop-sheet-handle');
+  if (handle) handle.addEventListener('click', hideFn);
+  let startY = 0;
+  sheetEl.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+  sheetEl.addEventListener('touchend', e => {
+    if (e.changedTouches[0].clientY - startY > 60) hideFn();
+  }, { passive: true });
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const REFRESH_INTERVAL = 30; // seconds
 
@@ -200,6 +210,10 @@ const state = {
   mapSelectedVehicle: null,
   vehicleRefreshTimer: null,
   routeHighlight: null,
+  routeHighlightPast: null,
+  upcomingStopMarkers: [],
+  vehicleFilter: null,
+  upcomingStopIds: new Set(),
 };
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -1108,6 +1122,9 @@ function initMap() {
   });
   new LocateControl({ position: 'bottomright' }).addTo(map);
 
+  addSheetDismissGesture(document.getElementById('map-stop-sheet'), hideMapStopSheet);
+  addSheetDismissGesture(document.getElementById('map-vehicle-sheet'), hideMapVehicleSheet);
+
   map.on('click', () => { hideMapStopSheet(); hideMapVehicleSheet(); });
   map.on('moveend', () => {
     const c = map.getCenter();
@@ -1159,6 +1176,11 @@ function updateMapMarkers() {
     const marker = L.marker([stop.lat, stop.lon], { icon: stopIcon }).addTo(state.leafletMap);
     marker.bindTooltip(stop.name, { direction: 'top', offset: [0, -6], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapVehicleSheet(); showMapStopSheet(stop); });
+    marker._stopId = stop.id;
+    if (state.vehicleFilter && !state.upcomingStopIds.has(stop.id)) {
+      marker.getElement()?.style.setProperty('opacity', '0');
+      marker.getElement()?.style.setProperty('pointer-events', 'none');
+    }
     state.leafletStopMarkers.push(marker);
   });
 
@@ -1201,6 +1223,16 @@ function updateVehicleMarkers() {
       .addTo(state.leafletMap);
     marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -14], className: 'stop-map-tooltip' });
     marker.on('click', () => { hideMapStopSheet(); showMapVehicleSheet(vehicle); });
+    marker._routeLabel = routeLabel;
+    marker._headsign = headsign;
+    if (state.vehicleFilter) {
+      const match = marker._routeLabel === state.vehicleFilter.routeLabel
+                 && marker._headsign   === state.vehicleFilter.headsign;
+      if (!match) {
+        marker.getElement()?.style.setProperty('opacity', '0');
+        marker.getElement()?.style.setProperty('pointer-events', 'none');
+      }
+    }
     state.leafletVehicleMarkers.push(marker);
   });
 }
@@ -1264,8 +1296,21 @@ async function showMapVehicleSheet(vehicle) {
     const stopMap = {};
     (tripData.references?.stops || []).forEach(s => { stopMap[s.id] = s; });
 
-    // Draw route highlight using the trip's GTFS shape (actual road/rail geometry)
-    if (state.routeHighlight) { state.routeHighlight.remove(); state.routeHighlight = null; }
+    // serviceDate is epoch ms of midnight; arrivalTime is seconds since midnight
+    // scheduleDeviation is seconds (positive = late), so add it to get estimated arrival
+    const serviceDate = entry.serviceDate || entry.status?.serviceDate || 0;
+    const schedDev = entry.status?.scheduleDeviation || 0;
+    const now = Date.now();
+
+    // All upcoming stops — full list for overlays, slice 5 for sheet display
+    const allUpcoming = stopTimes.filter(st =>
+      serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000) > now
+    );
+    const upcoming = allUpcoming.slice(0, 5);
+
+    // Two-tone route polyline: bright orange ahead, dark behind vehicle position
+    if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
+    if (state.routeHighlightPast) { state.routeHighlightPast.remove(); state.routeHighlightPast = null; }
     const tripRef = (tripData.references?.trips || []).find(t => t.id === entry.tripId);
     const shapeId = tripRef?.shapeId;
     if (shapeId && state.leafletMap) {
@@ -1275,11 +1320,25 @@ async function showMapVehicleSheet(vehicle) {
         if (encoded) {
           const coords = decodePolyline(encoded);
           if (coords.length > 1) {
-            state.routeHighlight = L.polyline(coords, {
-              color: '#f97316',
-              weight: 4,
-              opacity: 0.8,
-            }).addTo(state.leafletMap);
+            const vLat = vehicle.location?.lat ?? 0;
+            const vLon = vehicle.location?.lon ?? 0;
+            let splitIdx = 0, minD = Infinity;
+            coords.forEach(([la, lo], i) => {
+              const d = (la - vLat) ** 2 + (lo - vLon) ** 2;
+              if (d < minD) { minD = d; splitIdx = i; }
+            });
+            const pastCoords     = coords.slice(0, splitIdx + 1);
+            const upcomingCoords = coords.slice(splitIdx);
+            if (pastCoords.length > 1) {
+              state.routeHighlightPast = L.polyline(pastCoords, {
+                color: '#7c3a0d', weight: 3, opacity: 0.45,
+              }).addTo(state.leafletMap);
+            }
+            if (upcomingCoords.length > 1) {
+              state.routeHighlight = L.polyline(upcomingCoords, {
+                color: '#f97316', weight: 4, opacity: 0.9,
+              }).addTo(state.leafletMap);
+            }
           }
         }
       } catch (e) {
@@ -1287,19 +1346,40 @@ async function showMapVehicleSheet(vehicle) {
       }
     }
 
-    // serviceDate is epoch ms of midnight; arrivalTime is seconds since midnight
-    // scheduleDeviation is seconds (positive = late), so add it to get estimated arrival
-    const serviceDate = entry.serviceDate || entry.status?.serviceDate || 0;
-    const schedDev = entry.status?.scheduleDeviation || 0;
+    // Filter map: dim unrelated stops/vehicles; show big orange upcoming stop markers
+    const routeLabelForFilter = /^([A-Z])\s+Line$/i.test(routeShortName)
+      ? routeShortName[0].toUpperCase() : routeShortName;
+    state.vehicleFilter   = { routeLabel: routeLabelForFilter, headsign: tripHeadsign };
+    state.upcomingStopIds = new Set(allUpcoming.map(st => st.stopId));
 
-    // Filter to upcoming stops (not yet passed)
-    const now = Date.now();
-    const upcoming = stopTimes
-      .filter(st => {
-        const estArrival = serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000);
-        return estArrival > now;
+    state.leafletStopMarkers.forEach(m => {
+      const show = state.upcomingStopIds.has(m._stopId);
+      m.getElement()?.style.setProperty('opacity', show ? '1' : '0');
+      m.getElement()?.style.setProperty('pointer-events', show ? '' : 'none');
+    });
+
+    state.leafletVehicleMarkers.forEach(m => {
+      const match = m._routeLabel === routeLabelForFilter && m._headsign === tripHeadsign;
+      m.getElement()?.style.setProperty('opacity', match ? '1' : '0');
+      m.getElement()?.style.setProperty('pointer-events', match ? '' : 'none');
+    });
+
+    state.upcomingStopMarkers.forEach(m => m.remove());
+    state.upcomingStopMarkers = allUpcoming
+      .map(st => {
+        const s = stopMap[st.stopId];
+        if (!s?.lat || !s?.lon) return null;
+        const stopIcon = L.divIcon({
+          className: 'upcoming-stop-marker',
+          html: '<div class="upcoming-stop-dot"></div>',
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        });
+        return L.marker([s.lat, s.lon], { icon: stopIcon })
+          .bindTooltip(s.name || st.stopId, { direction: 'top', offset: [0, -10], className: 'stop-map-tooltip' })
+          .addTo(state.leafletMap);
       })
-      .slice(0, 5);
+      .filter(Boolean);
 
     if (upcoming.length === 0) {
       stopsEl.innerHTML = '<div class="state-box"><p style="color:var(--text-secondary);">No upcoming stops</p></div>';
@@ -1309,7 +1389,6 @@ async function showMapVehicleSheet(vehicle) {
         const estArrival = new Date(serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000));
         const minsAway = Math.round((estArrival - now) / 60000);
         const displayTime = minsAway <= 0 ? 'Now' : `${minsAway} min`;
-
         return `
           <div class="vehicle-stop-row">
             <div class="vehicle-stop-name">${stop.name || st.stopId}</div>
@@ -1338,7 +1417,20 @@ async function showMapVehicleSheet(vehicle) {
 
 function hideMapVehicleSheet() {
   document.getElementById('map-vehicle-sheet').classList.remove('visible');
-  if (state.routeHighlight) { state.routeHighlight.remove(); state.routeHighlight = null; }
+  if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
+  if (state.routeHighlightPast) { state.routeHighlightPast.remove(); state.routeHighlightPast = null; }
+  state.upcomingStopMarkers.forEach(m => m.remove());
+  state.upcomingStopMarkers = [];
+  state.vehicleFilter   = null;
+  state.upcomingStopIds = new Set();
+  state.leafletStopMarkers.forEach(m => {
+    m.getElement()?.style.removeProperty('opacity');
+    m.getElement()?.style.removeProperty('pointer-events');
+  });
+  state.leafletVehicleMarkers.forEach(m => {
+    m.getElement()?.style.removeProperty('opacity');
+    m.getElement()?.style.removeProperty('pointer-events');
+  });
 }
 
 function swapMapTiles() {
