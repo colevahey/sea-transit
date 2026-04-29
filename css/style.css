@@ -248,7 +248,7 @@ body.light-mode::after {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  padding-bottom: 16px;
+  padding-bottom: calc(var(--nav-height) + 16px);
   position: relative;
 }
 .content::-webkit-scrollbar { display: none; }
@@ -411,7 +411,9 @@ body.light-mode::after {
 
 /* ─── Bottom nav bar ────────────────────────────────────────────────────────── */
 .nav-bar {
-  flex-shrink: 0;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 100;
   padding-top: 10px;
   padding-bottom: 10px;
   background: rgba(8, 12, 10, 0.85);
@@ -423,14 +425,14 @@ body.light-mode::after {
   justify-content: space-around;
 }
 
-/* Safe-area spacer: fills home-indicator zone below nav in iOS standalone.
-   Uses a hardcoded 34px fallback because env() can be 0 at WKWebView parse time. */
-.safe-area-spacer {
-  flex-shrink: 0;
-  height: 0;
+/* In standalone, push icons above the home indicator.
+   Hardcoded 34px because env() is 0 at WKWebView parse time.
+   Also update --nav-height so content/map padding stays correct. */
+html.ios-standalone {
+  --nav-height: 96px;
 }
-html.ios-standalone .safe-area-spacer {
-  height: max(34px, env(safe-area-inset-bottom, 0px));
+html.ios-standalone .nav-bar {
+  padding-bottom: max(34px, env(safe-area-inset-bottom, 0px));
 }
 body.light-mode .nav-bar {
   background: rgba(240, 247, 243, 0.90);
@@ -751,7 +753,7 @@ body.light-mode .nav-bar {
 /* ─── Map container ──────────────────────────────────────────────────────────── */
 #map-container {
   flex: 1;
-  padding: 6px 20px 8px;
+  padding: 6px 20px calc(var(--nav-height) + 8px);
   display: flex;
   flex-direction: column;
   min-height: 0;
