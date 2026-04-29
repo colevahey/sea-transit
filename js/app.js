@@ -112,23 +112,6 @@ function isRealtime(a) {
   return a.predictedArrivalTime > 0;
 }
 
-// ─── Safe area inset measurement ──────────────────────────────────────────────
-// iOS WKWebView evaluates env(safe-area-inset-bottom) at CSS parse time, before
-// standalone layout finishes — so the :root custom property freezes at 0px.
-// Fix: probe the actual pixel value after first paint and set it as an inline
-// style, which overrides the stylesheet value and cascades to all var(--safe-bottom) uses.
-function initSafeArea() {
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;bottom:0;left:0;right:0;height:env(safe-area-inset-bottom,0px);pointer-events:none;visibility:hidden';
-  document.body.appendChild(probe);
-  requestAnimationFrame(() => {
-    const h = Math.round(probe.getBoundingClientRect().height);
-    document.body.removeChild(probe);
-    if (h > 0) {
-      document.documentElement.style.setProperty('--safe-bottom', h + 'px');
-    }
-  });
-}
 
 function icon(name) {
   return ICONS[name] || '';
@@ -173,12 +156,32 @@ function decodePolyline(encoded) {
 
 function addSheetDismissGesture(sheetEl, hideFn) {
   const handle = sheetEl.querySelector('.map-stop-sheet-handle');
-  if (handle) handle.addEventListener('click', hideFn);
+  if (handle) handle.addEventListener('click', () => {
+    sheetEl.classList.toggle('minimized');
+  });
+  // Tap anywhere on a minimized sheet to expand it
+  sheetEl.addEventListener('click', e => {
+    if (sheetEl.classList.contains('minimized') && !handle?.contains(e.target)) {
+      sheetEl.classList.remove('minimized');
+    }
+  });
   let startY = 0;
   sheetEl.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
   sheetEl.addEventListener('touchend', e => {
     if (e.changedTouches[0].clientY - startY > 60) hideFn();
   }, { passive: true });
+}
+
+// Pan so latlng is centered in the visible map area above the sheet
+function panToAboveSheet(latlng, sheetEl) {
+  const map = state.leafletMap;
+  if (!map || !latlng) return;
+  requestAnimationFrame(() => {
+    const sheetH = sheetEl.offsetHeight + 24;
+    const latlngPx = map.project(latlng, map.getZoom());
+    const newCenter = map.unproject(latlngPx.add(L.point(0, sheetH / 2)), map.getZoom());
+    map.panTo(newCenter, { animate: true, duration: 0.3 });
+  });
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -1132,7 +1135,17 @@ function initMap() {
   addSheetDismissGesture(document.getElementById('map-stop-sheet'), hideMapStopSheet);
   addSheetDismissGesture(document.getElementById('map-vehicle-sheet'), hideMapVehicleSheet);
 
-  map.on('click', () => { hideMapStopSheet(); hideMapVehicleSheet(); });
+  map.on('click', () => {
+    const vSheet = document.getElementById('map-vehicle-sheet');
+    const sSheet = document.getElementById('map-stop-sheet');
+    if (vSheet.classList.contains('visible')) {
+      if (vSheet.classList.contains('minimized')) hideMapVehicleSheet();
+      else vSheet.classList.add('minimized');
+    } else if (sSheet.classList.contains('visible')) {
+      if (sSheet.classList.contains('minimized')) hideMapStopSheet();
+      else sSheet.classList.add('minimized');
+    }
+  });
   map.on('moveend', () => {
     const c = map.getCenter();
     if (state.mapLoadCenter) {
@@ -1256,10 +1269,12 @@ function showMapStopSheet(stop) {
   favBtn.innerHTML = fav ? icon('starFilled') : icon('star');
   favBtn.classList.toggle('is-favorite', fav);
   sheet.classList.add('visible');
+  if (stop.lat && stop.lon) panToAboveSheet(L.latLng(stop.lat, stop.lon), sheet);
 }
 
 function hideMapStopSheet() {
-  document.getElementById('map-stop-sheet').classList.remove('visible');
+  const el = document.getElementById('map-stop-sheet');
+  el.classList.remove('visible', 'minimized');
   if (state.selectedStopMarker) { state.selectedStopMarker.remove(); state.selectedStopMarker = null; }
 }
 
@@ -1308,11 +1323,11 @@ async function showMapVehicleSheet(vehicle) {
     const schedDev = entry.status?.scheduleDeviation || 0;
     const now = Date.now();
 
-    // All upcoming stops — full list for overlays, slice 5 for sheet display
+    // All upcoming stops — full list for overlays, slice 3 for sheet display
     const allUpcoming = stopTimes.filter(st =>
       serviceDate + (st.arrivalTime * 1000) + (schedDev * 1000) > now
     );
-    const upcoming = allUpcoming.slice(0, 5);
+    const upcoming = allUpcoming.slice(0, 3);
 
     // Two-tone route polyline: bright orange ahead, dark behind vehicle position
     if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
@@ -1421,10 +1436,12 @@ async function showMapVehicleSheet(vehicle) {
   }
 
   sheet.classList.add('visible');
+  const vLoc = vehicle.location;
+  if (vLoc?.lat && vLoc?.lon) panToAboveSheet(L.latLng(vLoc.lat, vLoc.lon), sheet);
 }
 
 function hideMapVehicleSheet() {
-  document.getElementById('map-vehicle-sheet').classList.remove('visible');
+  document.getElementById('map-vehicle-sheet').classList.remove('visible', 'minimized');
   if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
   if (state.routeHighlightPast) { state.routeHighlightPast.remove(); state.routeHighlightPast = null; }
   state.upcomingStopMarkers.forEach(m => m.remove());
@@ -1546,11 +1563,9 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js').catch(console.warn);
   }
 
-  // Measure and apply safe area insets after first paint (fixes WKWebView timing).
-  requestAnimationFrame(initSafeArea);
-  setTimeout(initSafeArea, 150); // second pass for slower WKWebView inset delivery
-  window.addEventListener('orientationchange', () => setTimeout(initSafeArea, 150));
-
+  if (navigator.standalone) {
+    document.documentElement.classList.add('ios-standalone');
+  }
 
   // Watch position for real-time distance updates (Task C)
   if (navigator.geolocation) {

@@ -23,7 +23,6 @@
   /* Layout */
   --nav-height:        72px;
   --status-height:     env(safe-area-inset-top, 0px);
-  --safe-bottom:       env(safe-area-inset-bottom, 0px);
   --radius-sm:         10px;
   --radius-md:         16px;
   --radius-lg:         20px;
@@ -249,7 +248,7 @@ body.light-mode::after {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+  padding-bottom: 16px;
   position: relative;
 }
 .content::-webkit-scrollbar { display: none; }
@@ -412,11 +411,9 @@ body.light-mode::after {
 
 /* ─── Bottom nav bar ────────────────────────────────────────────────────────── */
 .nav-bar {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
+  flex-shrink: 0;
   padding-top: 10px;
-  /* At least 10px at the bottom to balance top padding; safe area takes over on iOS */
-  padding-bottom: max(10px, var(--safe-bottom));
+  padding-bottom: 10px;
   background: rgba(8, 12, 10, 0.85);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
@@ -424,7 +421,16 @@ body.light-mode::after {
   display: flex;
   align-items: flex-start;
   justify-content: space-around;
-  z-index: 100;
+}
+
+/* Safe-area spacer: fills home-indicator zone below nav in iOS standalone.
+   Uses a hardcoded 34px fallback because env() can be 0 at WKWebView parse time. */
+.safe-area-spacer {
+  flex-shrink: 0;
+  height: 0;
+}
+html.ios-standalone .safe-area-spacer {
+  height: max(34px, env(safe-area-inset-bottom, 0px));
 }
 body.light-mode .nav-bar {
   background: rgba(240, 247, 243, 0.90);
@@ -745,8 +751,7 @@ body.light-mode .nav-bar {
 /* ─── Map container ──────────────────────────────────────────────────────────── */
 #map-container {
   flex: 1;
-  /* Sides match .search-wrap (20px); bottom clears the fixed nav bar + safe area */
-  padding: 6px 20px calc(var(--nav-height) + var(--safe-bottom) + 8px);
+  padding: 6px 20px 8px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -776,6 +781,13 @@ body.light-mode .nav-bar {
   transform: translateY(0);
   pointer-events: auto;
 }
+.map-stop-sheet.minimized {
+  cursor: pointer;
+}
+.map-stop-sheet.minimized .map-stop-sheet-arrivals-btn,
+.map-stop-sheet.minimized .vehicle-sheet-label,
+.map-stop-sheet.minimized #vehicle-sheet-stops,
+.map-stop-sheet.minimized .vehicle-stale-warning { display: none; }
 
 .map-stop-sheet-handle {
   width: 32px; height: 4px;
@@ -908,6 +920,10 @@ body.light-mode .leaflet-control-attribution {
   border: 1.5px solid rgba(255,255,255,0.45);
   cursor: pointer;
   transition: transform 0.1s;
+}
+body.light-mode .stop-marker-dot {
+  background: rgba(80,80,80,0.22);
+  border-color: rgba(80,80,80,0.42);
 }
 .stop-marker-dot:hover { transform: scale(1.4); }
 .stop-map-marker.selected .stop-marker-dot {
