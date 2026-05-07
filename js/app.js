@@ -157,13 +157,10 @@ function decodePolyline(encoded) {
 function addSheetDragGesture(sheetEl, cleanupFn) {
   let startY = 0, startOff = 0, curOff = 0;
 
-  // Distance to push sheet down so only handle + header row is visible
   function bannerOff() {
-    const headerEl = sheetEl.querySelector('.map-vehicle-sheet-header, .map-stop-sheet-body');
-    if (!headerEl) return 0;
-    const sheetRect  = sheetEl.getBoundingClientRect();
-    const headerRect = headerEl.getBoundingClientRect();
-    return Math.max(0, sheetEl.offsetHeight - (headerRect.bottom - sheetRect.top) - 14);
+    const cutEl = sheetEl.querySelector('.vehicle-sheet-label, .map-stop-sheet-arrivals-btn');
+    if (!cutEl) return 0;
+    return Math.max(0, sheetEl.offsetHeight - cutEl.offsetTop + 12);
   }
 
   function move(y, animate) {
