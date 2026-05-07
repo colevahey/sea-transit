@@ -780,16 +780,9 @@ body.light-mode .nav-bar {
   pointer-events: none;
 }
 .map-stop-sheet.visible {
-  transform: translateY(0);
   pointer-events: auto;
+  /* transform controlled entirely by JS drag controller */
 }
-.map-stop-sheet.minimized {
-  cursor: pointer;
-}
-.map-stop-sheet.minimized .map-stop-sheet-arrivals-btn,
-.map-stop-sheet.minimized .vehicle-sheet-label,
-.map-stop-sheet.minimized #vehicle-sheet-stops,
-.map-stop-sheet.minimized .vehicle-stale-warning { display: none; }
 
 .map-stop-sheet-handle {
   width: 32px; height: 4px;

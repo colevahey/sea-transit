@@ -154,21 +154,89 @@ function decodePolyline(encoded) {
   return coords;
 }
 
-function addSheetDismissGesture(sheetEl, hideFn) {
+function addSheetDragGesture(sheetEl, cleanupFn) {
+  let startY = 0, startOff = 0, curOff = 0;
+
+  // Distance to push sheet down so only handle + header row is visible
+  function bannerOff() {
+    const headerEl = sheetEl.querySelector('.map-vehicle-sheet-header, .map-stop-sheet-body');
+    if (!headerEl) return 0;
+    const sheetRect  = sheetEl.getBoundingClientRect();
+    const headerRect = headerEl.getBoundingClientRect();
+    return Math.max(0, sheetEl.offsetHeight - (headerRect.bottom - sheetRect.top) - 14);
+  }
+
+  function move(y, animate) {
+    curOff = y;
+    sheetEl._curOffset = y;
+    sheetEl.style.transition = animate ? 'transform 0.28s cubic-bezier(0.22,1,0.36,1)' : 'none';
+    sheetEl.style.transform  = `translateY(${y}px)`;
+  }
+
+  function dismiss() {
+    if (sheetEl._sheetState === 'hidden') return;
+    sheetEl._sheetState = 'hidden';
+    cleanupFn();
+    move(sheetEl.offsetHeight + 40, true);
+    setTimeout(() => {
+      sheetEl.classList.remove('visible');
+      sheetEl.style.transition = sheetEl.style.transform = '';
+      curOff = 0; sheetEl._curOffset = 0;
+    }, 290);
+  }
+
+  sheetEl._sheetState = 'hidden';
+  sheetEl._curOffset  = 0;
+
+  sheetEl.openBanner = () => {
+    sheetEl._sheetState = 'banner';
+    sheetEl.classList.add('visible');
+    requestAnimationFrame(() => move(bannerOff(), true));
+  };
+  sheetEl.openExpanded = () => {
+    sheetEl._sheetState = 'expanded';
+    sheetEl.classList.add('visible');
+    requestAnimationFrame(() => move(0, true));
+  };
+  sheetEl.closeSheet = dismiss;
+
   const handle = sheetEl.querySelector('.map-stop-sheet-handle');
-  if (handle) handle.addEventListener('click', () => {
-    sheetEl.classList.toggle('minimized');
+  handle?.addEventListener('click', () => {
+    if (sheetEl._sheetState === 'banner') sheetEl.openExpanded();
+    else sheetEl.openBanner();
   });
-  // Tap anywhere on a minimized sheet to expand it
   sheetEl.addEventListener('click', e => {
-    if (sheetEl.classList.contains('minimized') && !handle?.contains(e.target)) {
-      sheetEl.classList.remove('minimized');
-    }
+    if (!handle?.contains(e.target) && sheetEl._sheetState === 'banner') sheetEl.openExpanded();
   });
-  let startY = 0;
-  sheetEl.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
+
+  sheetEl.addEventListener('touchstart', e => {
+    startY   = e.touches[0].clientY;
+    startOff = curOff;
+    sheetEl.style.transition = 'none';
+  }, { passive: true });
+
+  sheetEl.addEventListener('touchmove', e => {
+    const dy = e.touches[0].clientY - startY;
+    const bo = bannerOff();
+    let y = startOff + dy;
+    if (y < 0)            y = y * 0.15;
+    else if (y > bo + 80) y = bo + 80 + (y - bo - 80) * 0.2;
+    move(y, false);
+  }, { passive: true });
+
   sheetEl.addEventListener('touchend', e => {
-    if (e.changedTouches[0].clientY - startY > 60) hideFn();
+    const dy         = e.changedTouches[0].clientY - startY;
+    const bo         = bannerOff();
+    const fromBanner = startOff > bo * 0.3;
+    if (fromBanner) {
+      if (dy < -40)     sheetEl.openExpanded();
+      else if (dy > 50) dismiss();
+      else              sheetEl.openBanner();
+    } else {
+      if (dy > 160)     dismiss();
+      else if (dy > 60) sheetEl.openBanner();
+      else              sheetEl.openExpanded();
+    }
   }, { passive: true });
 }
 
@@ -177,9 +245,9 @@ function panToAboveSheet(latlng, sheetEl) {
   const map = state.leafletMap;
   if (!map || !latlng) return;
   requestAnimationFrame(() => {
-    const sheetH = sheetEl.offsetHeight + 24;
+    const visH = sheetEl.offsetHeight - (sheetEl._curOffset || 0) + 24;
     const latlngPx = map.project(latlng, map.getZoom());
-    const newCenter = map.unproject(latlngPx.add(L.point(0, sheetH / 2)), map.getZoom());
+    const newCenter = map.unproject(latlngPx.add(L.point(0, visH / 2)), map.getZoom());
     map.panTo(newCenter, { animate: true, duration: 0.3 });
   });
 }
@@ -1136,19 +1204,27 @@ function initMap() {
   });
   new LocateControl({ position: 'bottomright' }).addTo(map);
 
-  addSheetDismissGesture(document.getElementById('map-stop-sheet'), hideMapStopSheet);
-  addSheetDismissGesture(document.getElementById('map-vehicle-sheet'), hideMapVehicleSheet);
+  addSheetDragGesture(document.getElementById('map-stop-sheet'), () => {
+    if (state.selectedStopMarker) { state.selectedStopMarker.remove(); state.selectedStopMarker = null; }
+  });
+  addSheetDragGesture(document.getElementById('map-vehicle-sheet'), () => {
+    if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
+    if (state.routeHighlightPast) { state.routeHighlightPast.remove(); state.routeHighlightPast = null; }
+    state.upcomingStopMarkers.forEach(m => m.remove());
+    state.upcomingStopMarkers = [];
+    state.vehicleFilter   = null;
+    state.upcomingStopIds = new Set();
+    state.stopMarkerIndex.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
+    state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
+  });
 
   map.on('click', () => {
     const vSheet = document.getElementById('map-vehicle-sheet');
     const sSheet = document.getElementById('map-stop-sheet');
-    if (vSheet.classList.contains('visible')) {
-      if (vSheet.classList.contains('minimized')) hideMapVehicleSheet();
-      else vSheet.classList.add('minimized');
-    } else if (sSheet.classList.contains('visible')) {
-      if (sSheet.classList.contains('minimized')) hideMapStopSheet();
-      else sSheet.classList.add('minimized');
-    }
+    if (vSheet._sheetState === 'expanded')    vSheet.openBanner?.();
+    else if (vSheet._sheetState === 'banner') hideMapVehicleSheet();
+    else if (sSheet._sheetState === 'expanded') sSheet.openBanner?.();
+    else if (sSheet._sheetState === 'banner')  hideMapStopSheet();
   });
   map.on('moveend', () => {
     const c = map.getCenter();
@@ -1272,14 +1348,12 @@ function showMapStopSheet(stop) {
   const fav = isFavorite(stop.id);
   favBtn.innerHTML = fav ? icon('starFilled') : icon('star');
   favBtn.classList.toggle('is-favorite', fav);
-  sheet.classList.add('visible');
+  sheet.openExpanded?.() ?? sheet.classList.add('visible');
   if (stop.lat && stop.lon) panToAboveSheet(L.latLng(stop.lat, stop.lon), sheet);
 }
 
 function hideMapStopSheet() {
-  const el = document.getElementById('map-stop-sheet');
-  el.classList.remove('visible', 'minimized');
-  if (state.selectedStopMarker) { state.selectedStopMarker.remove(); state.selectedStopMarker = null; }
+  document.getElementById('map-stop-sheet').closeSheet?.();
 }
 
 async function showMapVehicleSheet(vehicle) {
@@ -1308,6 +1382,11 @@ async function showMapVehicleSheet(vehicle) {
   // Show loading
   const stopsEl = document.getElementById('vehicle-sheet-stops');
   stopsEl.innerHTML = '<div class="state-box"><div class="spinner"></div><p>Loading stops…</p></div>';
+
+  // Open in banner mode immediately — user sees bus info while data loads
+  sheet.openBanner?.() ?? sheet.classList.add('visible');
+  const vLoc = vehicle.location;
+  if (vLoc?.lat && vLoc?.lon) panToAboveSheet(L.latLng(vLoc.lat, vLoc.lon), sheet);
 
   // Fetch trip details
   try {
@@ -1439,21 +1518,10 @@ async function showMapVehicleSheet(vehicle) {
     staleEl.classList.add('hidden');
   }
 
-  sheet.classList.add('visible');
-  const vLoc = vehicle.location;
-  if (vLoc?.lat && vLoc?.lon) panToAboveSheet(L.latLng(vLoc.lat, vLoc.lon), sheet);
 }
 
 function hideMapVehicleSheet() {
-  document.getElementById('map-vehicle-sheet').classList.remove('visible', 'minimized');
-  if (state.routeHighlight)     { state.routeHighlight.remove();     state.routeHighlight = null; }
-  if (state.routeHighlightPast) { state.routeHighlightPast.remove(); state.routeHighlightPast = null; }
-  state.upcomingStopMarkers.forEach(m => m.remove());
-  state.upcomingStopMarkers = [];
-  state.vehicleFilter   = null;
-  state.upcomingStopIds = new Set();
-  state.stopMarkerIndex.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
-  state.leafletVehicleMarkers.forEach(m => { if (!state.leafletMap?.hasLayer(m)) m.addTo(state.leafletMap); });
+  document.getElementById('map-vehicle-sheet').closeSheet?.();
 }
 
 function swapMapTiles() {
