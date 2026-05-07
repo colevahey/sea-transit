@@ -1032,9 +1032,13 @@ function renderLoading(msg = 'Loading…') {
 async function loadStopsForMapCenter() {
   if (!state.leafletMap) return;
   const c = state.leafletMap.getCenter();
+  const b = state.leafletMap.getBounds();
+  // Cover the full visible area with 20% padding on each side
+  const latSpan = (b.getNorth() - b.getSouth()) * 1.4;
+  const lonSpan = (b.getEast() - b.getWest()) * 1.4;
   try {
     const data = await apiFetch('stops-for-location', {
-      lat: c.lat, lon: c.lng, radius: 600, maxCount: 25,
+      lat: c.lat, lon: c.lng, latSpan, lonSpan, maxCount: 100,
     });
     const newStops = data.list || [];
     const existingIds = new Set(state.stops.map(s => s.id));
@@ -1150,7 +1154,7 @@ function initMap() {
     const c = map.getCenter();
     if (state.mapLoadCenter) {
       const dist = haversineM(state.mapLoadCenter.lat, state.mapLoadCenter.lon, c.lat, c.lng);
-      if (dist < 250) return;
+      if (dist < 100) return;
     }
     state.mapLoadCenter = { lat: c.lat, lon: c.lng };
     loadStopsForMapCenter();
